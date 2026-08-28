@@ -1,6 +1,6 @@
 "use client";
 
-import { Car, Wrench, CheckCircle2, CalendarClock, ShieldAlert } from "lucide-react";
+import { Car, Wrench, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -9,7 +9,6 @@ interface MetricCardsProps {
   activeWorkOrders: number;
   completedWorkOrders: number;
   ratioDoneText: string;
-  dueMaintenanceCount: number;
 }
 
 export function MetricCards({
@@ -17,10 +16,9 @@ export function MetricCards({
   activeWorkOrders,
   completedWorkOrders,
   ratioDoneText,
-  dueMaintenanceCount,
 }: MetricCardsProps) {
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 md:grid-cols-3">
       <Card className="border-l-4 border-l-primary">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">Fleet Inventory</CardTitle>
@@ -28,18 +26,18 @@ export function MetricCards({
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{totalVehicles}</div>
-          <p className="text-xs text-muted-foreground">Active dealership units in garage</p>
+          <p className="text-xs text-muted-foreground">Dealership cars in yard</p>
         </CardContent>
       </Card>
 
       <Card className="border-l-4 border-l-amber-500">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Active Work Orders</CardTitle>
+          <CardTitle className="text-sm font-medium text-muted-foreground">In Progress Tasks</CardTitle>
           <Wrench className="h-4 w-4 text-amber-500" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">{activeWorkOrders}</div>
-          <p className="text-xs text-muted-foreground">Pending inspection & repair jobs</p>
+          <p className="text-xs text-muted-foreground">Cars with pending repair & photo items</p>
         </CardContent>
       </Card>
 
@@ -53,21 +51,7 @@ export function MetricCards({
             <span className="text-2xl font-bold">{ratioDoneText}</span>
             <Badge variant="success" className="text-xs">Live Rate</Badge>
           </div>
-          <p className="text-xs text-muted-foreground">{completedWorkOrders} jobs closed and ready</p>
-        </CardContent>
-      </Card>
-
-      <Card className="border-l-4 border-l-rose-500">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Preventive Due</CardTitle>
-          <CalendarClock className="h-4 w-4 text-rose-500" />
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2">
-            <span className="text-2xl font-bold">{dueMaintenanceCount}</span>
-            {dueMaintenanceCount > 0 && <Badge variant="destructive">Alert</Badge>}
-          </div>
-          <p className="text-xs text-muted-foreground">Vehicles needing recurring maintenance</p>
+          <p className="text-xs text-muted-foreground">{completedWorkOrders} cars completed and ready</p>
         </CardContent>
       </Card>
     </div>

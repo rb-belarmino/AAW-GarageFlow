@@ -16,7 +16,7 @@ export class ToggleWorkOrderDoneUseCase {
       throw new Error(`Work Order with ID ${dto.workOrderId} was not found.`);
     }
 
-    workOrder.toggleDone(dto.isDone, dto.completedBy);
+    workOrder.toggleAll(dto.isDone, dto.completedBy);
     return await this.workOrderRepository.update(workOrder);
   }
 }

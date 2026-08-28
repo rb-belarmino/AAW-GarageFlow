@@ -1,4 +1,4 @@
-import { InMemoryVehicleRepository, InMemoryWorkOrderRepository, InMemoryScheduleRepository } from "./garage-flow-harness.test";
+import { InMemoryVehicleRepository, InMemoryWorkOrderRepository } from "./garage-flow-harness.test";
 import { CreateVehicleUseCase } from "@/core/use-cases/vehicle/CreateVehicleUseCase";
 import { CreateWorkOrderUseCase } from "@/core/use-cases/work-order/CreateWorkOrderUseCase";
 import { ToggleWorkOrderDoneUseCase } from "@/core/use-cases/work-order/ToggleWorkOrderDoneUseCase";
@@ -8,12 +8,11 @@ describe("Evaluation Harness - User Story 3 (Fleet Dashboard Summary)", () => {
   it("should match legacy '9/0 Done' ratio accurately as jobs change status", async () => {
     const vehicleRepo = new InMemoryVehicleRepository();
     const workOrderRepo = new InMemoryWorkOrderRepository();
-    const scheduleRepo = new InMemoryScheduleRepository();
 
     const createVehicle = new CreateVehicleUseCase(vehicleRepo);
     const createWorkOrder = new CreateWorkOrderUseCase(workOrderRepo, vehicleRepo);
     const toggleDone = new ToggleWorkOrderDoneUseCase(workOrderRepo);
-    const getMetrics = new GetDashboardMetricsUseCase(vehicleRepo, workOrderRepo, scheduleRepo);
+    const getMetrics = new GetDashboardMetricsUseCase(vehicleRepo, workOrderRepo);
 
     // Seed 9 vehicles matching spreadsheet
     const vehiclesData = [

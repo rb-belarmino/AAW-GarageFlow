@@ -2,18 +2,17 @@ import { CreateVehicleUseCase } from "@/core/use-cases/vehicle/CreateVehicleUseC
 import { CreateWorkOrderUseCase } from "@/core/use-cases/work-order/CreateWorkOrderUseCase";
 import { ToggleWorkOrderDoneUseCase } from "@/core/use-cases/work-order/ToggleWorkOrderDoneUseCase";
 import { GetDashboardMetricsUseCase } from "@/core/use-cases/dashboard/GetDashboardMetricsUseCase";
-import { InMemoryVehicleRepository, InMemoryWorkOrderRepository, InMemoryScheduleRepository } from "../../harness/garage-flow-harness.test";
+import { InMemoryVehicleRepository, InMemoryWorkOrderRepository } from "../../harness/garage-flow-harness.test";
 
 describe("GetDashboardMetricsUseCase", () => {
   it("should calculate correct fleet metrics and ratioDoneText summary", async () => {
     const vehicleRepo = new InMemoryVehicleRepository();
     const workOrderRepo = new InMemoryWorkOrderRepository();
-    const scheduleRepo = new InMemoryScheduleRepository();
 
     const createVehicle = new CreateVehicleUseCase(vehicleRepo);
     const createWorkOrder = new CreateWorkOrderUseCase(workOrderRepo, vehicleRepo);
     const toggleDone = new ToggleWorkOrderDoneUseCase(workOrderRepo);
-    const getMetrics = new GetDashboardMetricsUseCase(vehicleRepo, workOrderRepo, scheduleRepo);
+    const getMetrics = new GetDashboardMetricsUseCase(vehicleRepo, workOrderRepo);
 
     // Create 3 vehicles
     const v1 = await createVehicle.execute({ vin: "VIN1", year: 2020, make: "Kia", model: "Soul", color: "Blue" });

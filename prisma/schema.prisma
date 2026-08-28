@@ -1,7 +1,5 @@
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
 }
 
 generator client {
@@ -15,29 +13,22 @@ enum WorkOrderStatus {
   CANCELLED
 }
 
-enum ScheduleRecurrenceType {
-  TIME_BASED
-  MILEAGE_BASED
-  BOTH
-}
-
 model Vehicle {
-  id              String                @id @default(uuid())
-  vin             String                @unique
-  year            Int
-  make            String
-  model           String
-  trim            String?
-  color           String
-  licensePlate    String?
-  currentMileage  Int                   @default(0)
-  sourceTag       String                @default("AAW Dealer")
-  status          String                @default("ACTIVE")
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  id             String      @id @default(uuid())
+  vin            String      @unique
+  year           Int
+  make           String
+  model          String
+  trim           String?
+  color          String
+  licensePlate   String?
+  currentMileage Int         @default(0)
+  sourceTag      String      @default("AAW Dealer")
+  status         String      @default("ACTIVE")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
-  workOrders      WorkOrder[]
-  schedules       MaintenanceSchedule[]
+  workOrders     WorkOrder[]
 
   @@index([vin])
   @@index([sourceTag])
@@ -45,22 +36,21 @@ model Vehicle {
 }
 
 model WorkOrder {
-  id              String          @id @default(uuid())
-  orderNumber     String          @unique
-  vehicleId       String
-  vehicle         Vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  id            String          @id @default(uuid())
+  orderNumber   String          @unique
+  vehicleId     String
+  vehicle       Vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   
-  toDoText        String
-  isDone          Boolean         @default(false)
-  status          WorkOrderStatus @default(IN_PROGRESS)
+  status        WorkOrderStatus @default(IN_PROGRESS)
+  isDone        Boolean         @default(false)
+  completedAt   DateTime?
+  completedBy   String?
+  notes         String?
   
-  scheduledDate   DateTime?
-  completedAt     DateTime?
-  completedBy     String?
-  notes           String?
-  
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  items         WorkOrderItem[]
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
   @@index([vehicleId])
   @@index([status])
@@ -68,32 +58,22 @@ model WorkOrder {
   @@index([createdAt])
 }
 
-model MaintenanceSchedule {
-  id                   String                 @id @default(uuid())
-  vehicleId            String
-  vehicle              Vehicle                @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+model WorkOrderItem {
+  id          String    @id @default(uuid())
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   
-  serviceName          String
-  defaultToDoText      String
-  recurrenceType       ScheduleRecurrenceType @default(BOTH)
-  
-  intervalMonths       Int?
-  intervalMiles        Int?
-  
-  lastServicedDate     DateTime?
-  lastServicedMileage  Int?
-  
-  nextDueDate          DateTime?
-  nextDueMileage       Int?
-  
-  isActive             Boolean                @default(true)
-  createdAt            DateTime               @default(now())
-  updatedAt            DateTime               @updatedAt
+  taskText    String
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+  completedBy String?
+  orderIndex  Int       @default(0)
 
-  @@index([vehicleId])
-  @@index([isActive])
-  @@index([nextDueDate])
-  @@index([nextDueMileage])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workOrderId])
+  @@index([isCompleted])
 }
 
 model SystemUser {

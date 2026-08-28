@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Wrench, Car, CalendarClock, LayoutDashboard, ShieldCheck } from "lucide-react";
+import { Wrench, Car, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function Header() {
@@ -12,7 +12,6 @@ export function Header() {
     { href: "/", label: "Fleet Dashboard", icon: LayoutDashboard },
     { href: "/work-orders", label: "Work Orders", icon: Wrench },
     { href: "/vehicles", label: "Vehicles Inventory", icon: Car },
-    { href: "/schedules", label: "Recurring Maintenance", icon: CalendarClock },
   ];
 
   return (
@@ -27,7 +26,7 @@ export function Header() {
               <span className="text-xl font-bold tracking-tight text-foreground">AAW GarageFlow</span>
               <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">US Dealer Fleet</span>
             </div>
-            <p className="text-xs text-muted-foreground">Automotive Work Orders & Preventive Maintenance</p>
+            <p className="text-xs text-muted-foreground">Dealership Yard & Service Order Management</p>
           </div>
         </div>
 

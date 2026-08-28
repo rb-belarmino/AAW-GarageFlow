@@ -1,5 +1,5 @@
 import { IWorkOrderRepository } from "@/core/domain/repositories/IWorkOrderRepository";
-import { WorkOrder, WorkOrderStatusType } from "@/core/domain/entities/WorkOrder";
+import { WorkOrder, WorkOrderItem, WorkOrderStatusType } from "@/core/domain/entities/WorkOrder";
 import { prisma } from "../prisma";
 
 export class PrismaWorkOrderRepository implements IWorkOrderRepository {
@@ -9,13 +9,24 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
         id: workOrder.id || undefined,
         orderNumber: workOrder.orderNumber,
         vehicleId: workOrder.vehicleId,
-        toDoText: workOrder.toDoText,
         isDone: workOrder.isDone,
         status: workOrder.status,
-        scheduledDate: workOrder.scheduledDate,
         completedAt: workOrder.completedAt,
         completedBy: workOrder.completedBy,
         notes: workOrder.notes,
+        items: {
+          create: workOrder.items.map((it, idx) => ({
+            id: it.id || undefined,
+            taskText: it.taskText,
+            isCompleted: it.isCompleted,
+            orderIndex: idx,
+          })),
+        },
+      },
+      include: {
+        items: {
+          orderBy: { orderIndex: "asc" },
+        },
       },
     });
 
@@ -25,6 +36,11 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
   async findById(id: string): Promise<WorkOrder | null> {
     const found = await prisma.workOrder.findUnique({
       where: { id },
+      include: {
+        items: {
+          orderBy: { orderIndex: "asc" },
+        },
+      },
     });
     return found ? new WorkOrder(found as any) : null;
   }
@@ -32,6 +48,11 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
   async findByOrderNumber(orderNumber: string): Promise<WorkOrder | null> {
     const found = await prisma.workOrder.findUnique({
       where: { orderNumber },
+      include: {
+        items: {
+          orderBy: { orderIndex: "asc" },
+        },
+      },
     });
     return found ? new WorkOrder(found as any) : null;
   }
@@ -48,13 +69,18 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
     if (filter?.isDone !== undefined) where.isDone = filter.isDone;
     if (filter?.search) {
       where.OR = [
-        { toDoText: { contains: filter.search, mode: "insensitive" } },
         { orderNumber: { contains: filter.search, mode: "insensitive" } },
+        { items: { some: { taskText: { contains: filter.search, mode: "insensitive" } } } },
       ];
     }
 
     const records = await prisma.workOrder.findMany({
       where,
+      include: {
+        items: {
+          orderBy: { orderIndex: "asc" },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
 
@@ -65,17 +91,87 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
     const updated = await prisma.workOrder.update({
       where: { id: workOrder.id },
       data: {
-        toDoText: workOrder.toDoText,
         isDone: workOrder.isDone,
         status: workOrder.status,
-        scheduledDate: workOrder.scheduledDate,
         completedAt: workOrder.completedAt,
         completedBy: workOrder.completedBy,
         notes: workOrder.notes,
       },
+      include: {
+        items: {
+          orderBy: { orderIndex: "asc" },
+        },
+      },
     });
 
     return new WorkOrder(updated as any);
+  }
+
+  async toggleItem(itemId: string, isCompleted: boolean, completedBy?: string | null): Promise<WorkOrder> {
+    const item = await prisma.workOrderItem.update({
+      where: { id: itemId },
+      data: {
+        isCompleted,
+        completedAt: isCompleted ? new Date() : null,
+        completedBy: completedBy || null,
+      },
+    });
+
+    // Check all items of this work order
+    const allItems = await prisma.workOrderItem.findMany({
+      where: { workOrderId: item.workOrderId },
+    });
+
+    const allDone = allItems.length > 0 && allItems.every((i) => i.isCompleted);
+
+    const updatedOrder = await prisma.workOrder.update({
+      where: { id: item.workOrderId },
+      data: {
+        isDone: allDone,
+        status: allDone ? "DONE" : "IN_PROGRESS",
+        completedAt: allDone ? new Date() : null,
+      },
+      include: {
+        items: {
+          orderBy: { orderIndex: "asc" },
+        },
+      },
+    });
+
+    return new WorkOrder(updatedOrder as any);
+  }
+
+  async addItem(workOrderId: string, taskText: string): Promise<WorkOrderItem> {
+    const count = await prisma.workOrderItem.count({ where: { workOrderId } });
+    const created = await prisma.workOrderItem.create({
+      data: {
+        workOrderId,
+        taskText,
+        orderIndex: count,
+        isCompleted: false,
+      },
+    });
+
+    // Ensure order is updated to IN_PROGRESS if a new pending item is added
+    await prisma.workOrder.update({
+      where: { id: workOrderId },
+      data: { isDone: false, status: "IN_PROGRESS" },
+    });
+
+    return new WorkOrderItem(created as any);
+  }
+
+  async removeItem(itemId: string): Promise<void> {
+    const item = await prisma.workOrderItem.findUnique({ where: { id: itemId } });
+    if (item) {
+      await prisma.workOrderItem.delete({ where: { id: itemId } });
+      const remaining = await prisma.workOrderItem.findMany({ where: { workOrderId: item.workOrderId } });
+      const allDone = remaining.length > 0 && remaining.every((i) => i.isCompleted);
+      await prisma.workOrder.update({
+        where: { id: item.workOrderId },
+        data: { isDone: allDone, status: allDone ? "DONE" : "IN_PROGRESS" },
+      });
+    }
   }
 
   async delete(id: string): Promise<void> {

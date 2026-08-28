@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { Wrench, Car, CalendarClock, Plus, ArrowRight, CheckCircle2, ShieldCheck, FileSpreadsheet } from "lucide-react";
+import { Wrench, Car, ArrowRight, FileSpreadsheet, CheckCircle2, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { PrismaVehicleRepository } from "@/infrastructure/database/repositories/PrismaVehicleRepository";
 import { PrismaWorkOrderRepository } from "@/infrastructure/database/repositories/PrismaWorkOrderRepository";
-import { PrismaScheduleRepository } from "@/infrastructure/database/repositories/PrismaScheduleRepository";
 import { GetDashboardMetricsUseCase } from "@/core/use-cases/dashboard/GetDashboardMetricsUseCase";
 import { MetricCards } from "@/components/dashboard/MetricCards";
 import { formatDate } from "@/lib/utils";
@@ -16,8 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const vehicleRepo = new PrismaVehicleRepository();
   const workOrderRepo = new PrismaWorkOrderRepository();
-  const scheduleRepo = new PrismaScheduleRepository();
-  const getMetricsUseCase = new GetDashboardMetricsUseCase(vehicleRepo, workOrderRepo, scheduleRepo);
+  const getMetricsUseCase = new GetDashboardMetricsUseCase(vehicleRepo, workOrderRepo);
 
   let metrics;
   try {
@@ -28,7 +26,6 @@ export default async function DashboardPage() {
       activeWorkOrders: 0,
       completedWorkOrders: 0,
       ratioDoneText: "0/0 Done",
-      dueMaintenanceCount: 0,
       recentWorkOrders: [],
     };
   }
@@ -37,9 +34,9 @@ export default async function DashboardPage() {
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Dealer Fleet Overview</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Dealer Yard Overview</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Real-time operations center replacing "Dealer cars / to do" spreadsheets with Clean Architecture workflows
+            Real-time dealership service & repair task tracking for incoming cars
           </p>
         </div>
 
@@ -64,7 +61,6 @@ export default async function DashboardPage() {
         activeWorkOrders={metrics.activeWorkOrders}
         completedWorkOrders={metrics.completedWorkOrders}
         ratioDoneText={metrics.ratioDoneText}
-        dueMaintenanceCount={metrics.dueMaintenanceCount}
       />
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -72,7 +68,7 @@ export default async function DashboardPage() {
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <div>
               <CardTitle className="text-base font-semibold">Live Work Order Stream</CardTitle>
-              <CardDescription>Recent inspections, photo uploads, detailing & repairs</CardDescription>
+              <CardDescription>Recent vehicles and their itemized inspection & repair tasks</CardDescription>
             </div>
             <Link href="/work-orders" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
               View All <ArrowRight className="h-3 w-3" />
@@ -87,9 +83,12 @@ export default async function DashboardPage() {
             ) : (
               <div className="divide-y rounded-lg border bg-card">
                 {metrics.recentWorkOrders.map((order) => (
-                  <div key={order.id} className="p-3.5 flex items-start justify-between gap-4 hover:bg-muted/30 transition-colors">
-                    <div className="space-y-1">
+                  <div key={order.id} className="p-4 flex items-start justify-between gap-4 hover:bg-muted/30 transition-colors">
+                    <div className="space-y-1.5 flex-1">
                       <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-semibold">
+                          {order.orderNumber}
+                        </span>
                         <span className="font-semibold text-sm">{order.vehicleName}</span>
                         <span className="font-mono text-xs text-muted-foreground">({order.vin})</span>
                       </div>
@@ -99,7 +98,7 @@ export default async function DashboardPage() {
                     </div>
                     <div className="text-right shrink-0">
                       <Badge variant={order.isDone ? "success" : "warning"} className="text-[11px]">
-                        {order.isDone ? "DONE" : "IN PROGRESS"}
+                        {order.isDone ? "ALL DONE" : "IN PROGRESS"}
                       </Badge>
                       <div className="text-[10px] text-muted-foreground mt-1">
                         {formatDate(order.createdAt)}
@@ -113,48 +112,25 @@ export default async function DashboardPage() {
         </Card>
 
         <div className="space-y-6">
-          <Card className="bg-gradient-to-br from-primary/5 via-card to-card border-primary/20">
+          <Card className="bg-muted/30">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <ShieldCheck className="h-4 w-4 text-primary" />
-                Quality & Architecture Gates
+                <Car className="h-4 w-4 text-primary" />
+                Quick Actions
               </CardTitle>
+              <CardDescription>Direct navigation shortcuts</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3 text-xs">
-              <div className="flex items-center justify-between border-b pb-2">
-                <span className="text-muted-foreground">Clean Architecture:</span>
-                <Badge variant="success">Strict Inward</Badge>
-              </div>
-              <div className="flex items-center justify-between border-b pb-2">
-                <span className="text-muted-foreground">Evaluation Harness:</span>
-                <Badge variant="success">100% Passing</Badge>
-              </div>
-              <div className="flex items-center justify-between border-b pb-2">
-                <span className="text-muted-foreground">Database:</span>
-                <span className="font-semibold">Neon PostgreSQL (Prisma)</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Language / Locale:</span>
-                <span className="font-semibold">English (US Market)</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base font-semibold flex items-center gap-2">
-                <CalendarClock className="h-4 w-4 text-rose-500" />
-                Preventive Automation
-              </CardTitle>
-              <CardDescription>Scheduled mileage & calendar maintenance rules</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-xs text-muted-foreground mb-4">
-                Automated scheduler evaluates fleet mileage and date intervals, auto-dispatching work orders into technician queues without manual data entry.
-              </p>
-              <Link href="/schedules">
-                <Button variant="secondary" size="sm" className="w-full text-xs">
-                  Manage Maintenance Rules
+            <CardContent className="space-y-2">
+              <Link href="/work-orders">
+                <Button variant="outline" size="sm" className="w-full justify-start text-xs">
+                  <Wrench className="h-3.5 w-3.5 mr-2" />
+                  View Work Orders & Checklists
+                </Button>
+              </Link>
+              <Link href="/vehicles">
+                <Button variant="outline" size="sm" className="w-full justify-start text-xs">
+                  <Car className="h-3.5 w-3.5 mr-2" />
+                  Register New Vehicle
                 </Button>
               </Link>
             </CardContent>

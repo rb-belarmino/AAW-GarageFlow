@@ -1,27 +1,35 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Search, CheckCircle2, Clock, Wrench, AlertCircle, RefreshCw } from "lucide-react";
+import { Plus, Search, CheckCircle2, Circle, Clock, Wrench, AlertCircle, RefreshCw, ChevronDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
+import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { formatDate } from "@/lib/utils";
+
+export interface WorkOrderItemRecord {
+  id: string;
+  workOrderId: string;
+  taskText: string;
+  isCompleted: boolean;
+  completedAt?: string | null;
+  completedBy?: string | null;
+  orderIndex: number;
+}
 
 export interface WorkOrderRecord {
   id: string;
   orderNumber: string;
   vehicleId: string;
-  toDoText: string;
   isDone: boolean;
   status: string;
-  scheduledDate?: string | null;
   completedAt?: string | null;
   completedBy?: string | null;
   notes?: string | null;
+  items: WorkOrderItemRecord[];
   createdAt: string;
 }
 
@@ -41,11 +49,12 @@ export function WorkOrderBoard() {
   const [loading, setLoading] = useState(true);
   const [filterDone, setFilterDone] = useState<string>("ALL"); // ALL, OPEN, DONE
   const [isOpen, setIsOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    vehicleId: "",
-    toDoText: "",
-    notes: "",
-  });
+  
+  // Create Modal state
+  const [selectedVehicleId, setSelectedVehicleId] = useState("");
+  const [tasksList, setTasksList] = useState<string[]>([""]);
+  const [notes, setNotes] = useState("");
+  const [newItemTexts, setNewItemTexts] = useState<{ [woId: string]: string }>({});
   const [error, setError] = useState<string | null>(null);
 
   const fetchWorkOrders = async () => {
@@ -74,8 +83,8 @@ export function WorkOrderBoard() {
       const json = await res.json();
       if (json.success) {
         setVehicles(json.data);
-        if (json.data.length > 0 && !formData.vehicleId) {
-          setFormData((prev) => ({ ...prev, vehicleId: json.data[0].id }));
+        if (json.data.length > 0 && !selectedVehicleId) {
+          setSelectedVehicleId(json.data[0].id);
         }
       }
     } catch (e) {
@@ -91,45 +100,92 @@ export function WorkOrderBoard() {
     fetchVehicles();
   }, []);
 
-  const handleToggleDone = async (workOrderId: string, currentDone: boolean) => {
-    const nextDone = !currentDone;
-    // Optimistic UI update
+  const handleToggleItem = async (workOrderId: string, itemId: string, currentStatus: boolean) => {
+    const nextStatus = !currentStatus;
+    // Optimistic UI Update
     setWorkOrders((prev) =>
-      prev.map((wo) =>
-        wo.id === workOrderId
-          ? {
-              ...wo,
-              isDone: nextDone,
-              status: nextDone ? "DONE" : "IN_PROGRESS",
-              completedAt: nextDone ? new Date().toISOString() : null,
-            }
-          : wo
-      )
+      prev.map((wo) => {
+        if (wo.id !== workOrderId) return wo;
+        const updatedItems = wo.items.map((it) =>
+          it.id === itemId ? { ...it, isCompleted: nextStatus } : it
+        );
+        const allDone = updatedItems.length > 0 && updatedItems.every((i) => i.isCompleted);
+        return {
+          ...wo,
+          items: updatedItems,
+          isDone: allDone,
+          status: allDone ? "DONE" : "IN_PROGRESS",
+        };
+      })
     );
 
     try {
-      const res = await fetch(`/api/work-orders/${workOrderId}/toggle-done`, {
+      const res = await fetch(`/api/work-orders/items/${itemId}/toggle`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isDone: nextDone, completedBy: "Technician" }),
+        body: JSON.stringify({ isCompleted: nextStatus, completedBy: "Technician" }),
       });
       const json = await res.json();
       if (!json.success) {
-        fetchWorkOrders(); // Revert on failure
+        fetchWorkOrders();
       }
     } catch (e) {
       fetchWorkOrders();
     }
   };
 
+  const handleAddNewItemToOrder = async (workOrderId: string) => {
+    const taskText = newItemTexts[workOrderId]?.trim();
+    if (!taskText) return;
+
+    try {
+      const res = await fetch(`/api/work-orders/${workOrderId}/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskText }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setNewItemTexts((prev) => ({ ...prev, [workOrderId]: "" }));
+        fetchWorkOrders();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleAddTaskField = () => {
+    setTasksList([...tasksList, ""]);
+  };
+
+  const handleRemoveTaskField = (index: number) => {
+    setTasksList(tasksList.filter((_, i) => i !== index));
+  };
+
+  const handleTaskTextChange = (index: number, text: string) => {
+    const next = [...tasksList];
+    next[index] = text;
+    setTasksList(next);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    const validTasks = tasksList.map((t) => t.trim()).filter((t) => t.length > 0);
+    if (validTasks.length === 0) {
+      setError("Please specify at least one To Do task.");
+      return;
+    }
+
     try {
       const res = await fetch("/api/work-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          vehicleId: selectedVehicleId,
+          tasks: validTasks,
+          notes,
+        }),
       });
       const json = await res.json();
       if (!json.success) {
@@ -137,11 +193,8 @@ export function WorkOrderBoard() {
         return;
       }
       setIsOpen(false);
-      setFormData({
-        vehicleId: vehicles[0]?.id || "",
-        toDoText: "",
-        notes: "",
-      });
+      setTasksList([""]);
+      setNotes("");
       fetchWorkOrders();
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred");
@@ -157,13 +210,13 @@ export function WorkOrderBoard() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold tracking-tight">Work Orders & Tasks</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Work Orders & Multi-Task Checklists</h1>
             <Badge variant="outline" className="text-sm font-semibold py-1 px-3 bg-muted/40">
-              {doneCount}/{openCount} Done
+              {doneCount}/{openCount} Cars Ready
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            Digital task tracker matching Dealer Cars / To Do spreadsheet with real-time checkoffs
+            Manage individual inspection and repair tasks per vehicle order with live checkoffs
           </p>
         </div>
 
@@ -180,9 +233,9 @@ export function WorkOrderBoard() {
                 New Work Order
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>Create Work Order & Checklist</DialogTitle>
+                <DialogTitle>Create Work Order with Tasks</DialogTitle>
               </DialogHeader>
               {error && (
                 <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -195,9 +248,9 @@ export function WorkOrderBoard() {
                   <label className="text-xs font-semibold">Select Vehicle *</label>
                   <select
                     className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    value={formData.vehicleId}
+                    value={selectedVehicleId}
                     required
-                    onChange={(e) => setFormData({ ...formData, vehicleId: e.target.value })}
+                    onChange={(e) => setSelectedVehicleId(e.target.value)}
                   >
                     {vehicles.length === 0 ? (
                       <option value="">No vehicles found - Register vehicle first</option>
@@ -211,26 +264,50 @@ export function WorkOrderBoard() {
                   </select>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold">To Do (Free-form repairs, notes & portal instructions) *</label>
-                  <Textarea
-                    required
-                    rows={4}
-                    placeholder="e.g. take photos / upload at Deal center / Cinto do carona nao trava - Teto solar as vezes nao fecha - camera de ré em azul"
-                    value={formData.toDoText}
-                    onChange={(e) => setFormData({ ...formData, toDoText: e.target.value })}
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Accepts multi-line inspection items, repair defects, and external upload tasks.
-                  </p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold">To Do Tasks (Multiple items supported) *</label>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleAddTaskField} className="h-7 text-xs text-primary">
+                      <Plus className="h-3 w-3 mr-1" /> Add Another Task
+                    </Button>
+                  </div>
+
+                  {tasksList.map((task, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-muted-foreground w-4">{idx + 1}.</span>
+                      <Input
+                        required
+                        placeholder={
+                          idx === 0
+                            ? "e.g. Take photos & upload to Deal Center"
+                            : idx === 1
+                            ? "e.g. Passenger seatbelt buckle does not lock"
+                            : "e.g. Buy fuel cap & detail clean"
+                        }
+                        value={task}
+                        onChange={(e) => handleTaskTextChange(idx, e.target.value)}
+                      />
+                      {tasksList.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:bg-destructive/10 shrink-0"
+                          onClick={() => handleRemoveTaskField(idx)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-xs font-semibold">Internal Shop Notes (Optional)</label>
                   <Input
-                    placeholder="e.g. Customer waiting in lobby / parts on order"
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    placeholder="e.g. Customer waiting / parts on order"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
                   />
                 </div>
 
@@ -252,7 +329,7 @@ export function WorkOrderBoard() {
         <div className="relative flex-1 w-full">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search tasks by 'To Do' keyword, VIN, or Order Number..."
+            placeholder="Search work orders by Task keyword, VIN, or Order Number..."
             className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -279,88 +356,130 @@ export function WorkOrderBoard() {
             size="sm"
             onClick={() => setFilterDone("DONE")}
           >
-            Done (✓)
+            Ready / Done (✓)
           </Button>
         </div>
       </div>
 
-      <div className="rounded-lg border bg-card shadow-sm">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-16 text-center">✓ Done</TableHead>
-              <TableHead className="w-52">Year / Car / Color</TableHead>
-              <TableHead className="w-36">VIN</TableHead>
-              <TableHead>To Do (Repairs & Tasks)</TableHead>
-              <TableHead className="w-28 text-center">Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  Loading work orders...
-                </TableCell>
-              </TableRow>
-            ) : workOrders.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  No work orders found. Create your first work order above.
-                </TableCell>
-              </TableRow>
-            ) : (
-              workOrders.map((wo) => {
-                const veh = vehicleMap.get(wo.vehicleId);
-                return (
-                  <TableRow
-                    key={wo.id}
-                    className={wo.isDone ? "bg-muted/20 opacity-80" : "hover:bg-muted/30"}
-                  >
-                    <TableCell className="text-center">
-                      <div className="flex justify-center items-center">
-                        <Switch
-                          checked={wo.isDone}
-                          onCheckedChange={() => handleToggleDone(wo.id, wo.isDone)}
-                        />
+      {loading ? (
+        <div className="text-center py-12 text-muted-foreground">Loading work orders...</div>
+      ) : workOrders.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground border rounded-lg bg-card">
+          No work orders found. Create your first vehicle order above.
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          {workOrders.map((wo) => {
+            const veh = vehicleMap.get(wo.vehicleId);
+            const completedCount = wo.items.filter((i) => i.isCompleted).length;
+            const totalCount = wo.items.length;
+            const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+            return (
+              <Card
+                key={wo.id}
+                className={`transition-all border-l-4 ${
+                  wo.isDone ? "border-l-emerald-500 bg-muted/10 opacity-90" : "border-l-amber-500 hover:shadow-md"
+                }`}
+              >
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 border-b gap-2">
+                    <div>
+                      <div className="flex items-center gap-2.5">
+                        <span className="font-mono font-bold text-sm bg-primary/10 text-primary px-2 py-0.5 rounded">
+                          {wo.orderNumber}
+                        </span>
+                        <span className="font-semibold text-base">
+                          {veh ? `${veh.year} ${veh.make} ${veh.model} (${veh.color})` : "Unknown Vehicle"}
+                        </span>
+                        <span className="text-xs font-mono text-muted-foreground">
+                          VIN: {veh?.vin || "N/A"}
+                        </span>
                       </div>
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {veh ? (
-                        <div>
-                          <div className="text-sm font-semibold">
-                            {veh.year} {veh.make} {veh.model}
-                          </div>
-                          <div className="text-xs text-muted-foreground">Color: {veh.color}</div>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Vehicle ID: {wo.vehicleId}</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {veh ? veh.vin : "N/A"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm whitespace-pre-wrap font-sans leading-relaxed">
-                        {wo.toDoText}
-                      </div>
-                      {wo.notes && (
-                        <div className="mt-1 text-xs text-muted-foreground italic">
-                          Notes: {wo.notes}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant={wo.isDone ? "success" : "warning"} className="font-mono text-xs">
-                        {wo.isDone ? "DONE" : "IN PROGRESS"}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Badge variant={wo.isDone ? "success" : "warning"} className="text-xs">
+                        {wo.isDone ? "ALL TASKS DONE" : `${completedCount}/${totalCount} TASKS DONE (${progressPercent}%)`}
                       </Badge>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+                      <span className="text-xs text-muted-foreground">{formatDate(wo.createdAt)}</span>
+                    </div>
+                  </div>
+
+                  {/* Tasks Checklist */}
+                  <div className="mt-3.5 space-y-2">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Checklist Tasks (Click checkbox to complete):
+                    </div>
+
+                    <div className="grid gap-2">
+                      {wo.items.map((item) => (
+                        <div
+                          key={item.id}
+                          onClick={() => handleToggleItem(wo.id, item.id, item.isCompleted)}
+                          className={`flex items-start gap-3 p-2.5 rounded-lg border transition-colors cursor-pointer ${
+                            item.isCompleted
+                              ? "bg-emerald-500/10 border-emerald-300 dark:border-emerald-800/40 text-emerald-950 dark:text-emerald-200"
+                              : "bg-card hover:bg-muted/50 border-border"
+                          }`}
+                        >
+                          <div className="mt-0.5 shrink-0">
+                            {item.isCompleted ? (
+                              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                            ) : (
+                              <Circle className="h-5 w-5 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="flex-1 text-sm font-medium leading-tight">
+                            <span className={item.isCompleted ? "line-through opacity-70" : ""}>
+                              {item.taskText}
+                            </span>
+                            {item.completedAt && (
+                              <div className="text-[10px] text-muted-foreground mt-0.5">
+                                Completed on {formatDate(item.completedAt)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Quick Add Task to Existing Order */}
+                    <div className="flex items-center gap-2 pt-2">
+                      <Input
+                        placeholder="Add another task to this car (e.g. 'Fix passenger mirror')..."
+                        value={newItemTexts[wo.id] || ""}
+                        onChange={(e) => setNewItemTexts({ ...newItemTexts, [wo.id]: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleAddNewItemToOrder(wo.id);
+                          }
+                        }}
+                        className="h-8 text-xs"
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="h-8 text-xs shrink-0"
+                        onClick={() => handleAddNewItemToOrder(wo.id)}
+                      >
+                        <Plus className="h-3 w-3 mr-1" /> Add Task
+                      </Button>
+                    </div>
+
+                    {wo.notes && (
+                      <div className="text-xs text-muted-foreground italic pt-1">
+                        Notes: {wo.notes}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

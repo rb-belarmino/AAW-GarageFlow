@@ -3,7 +3,12 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("Seeding legacy spreadsheet inventory from 'Dealer cars _ to do.xlsx'...");
+  console.log("Resetting and seeding inventory from 'Dealer cars _ to do.xlsx'...");
+
+  // Clean existing records to allow fresh multi-item seed
+  await prisma.workOrderItem.deleteMany();
+  await prisma.workOrder.deleteMany();
+  await prisma.vehicle.deleteMany();
 
   const spreadsheetRows = [
     {
@@ -18,16 +23,14 @@ async function main() {
       },
       workOrder: {
         orderNumber: "WO-1001",
-        toDoText: "take photos / upload at Deal center / Cinto do carona nao trava - Teto solar as vezes nao fecha - camera de ré em azul",
-        isDone: false,
-        status: "IN_PROGRESS" as const,
+        notes: "Genesis yard intake",
+        tasks: [
+          "Take photos & upload at Deal Center",
+          "Cinto do carona nao trava (Fix passenger seatbelt lock)",
+          "Teto solar as vezes nao fecha (Service sunroof mechanism)",
+          "Camera de ré em azul (Diagnose blue backup camera screen)",
+        ],
       },
-      schedule: {
-        serviceName: "Synthetic Oil & Multi-Point Inspection",
-        defaultToDoText: "Change synthetic oil, replace filter, check seatbelt lock and sunroof mechanism",
-        intervalMonths: 6,
-        intervalMiles: 5000,
-      }
     },
     {
       vehicle: {
@@ -41,16 +44,13 @@ async function main() {
       },
       workOrder: {
         orderNumber: "WO-1002",
-        toDoText: "take photos / upload at Deal center: detailing clean - Buy Fuel cap",
-        isDone: false,
-        status: "IN_PROGRESS" as const,
+        notes: "Pacifica prep",
+        tasks: [
+          "Take photos & upload at Deal Center",
+          "Detailing clean",
+          "Buy & install Fuel cap",
+        ],
       },
-      schedule: {
-        serviceName: "Fuel System & Filter Inspection",
-        defaultToDoText: "Inspect fuel cap seal, replace cabin air filter, full vehicle detailing",
-        intervalMonths: 12,
-        intervalMiles: 10000,
-      }
     },
     {
       vehicle: {
@@ -64,9 +64,10 @@ async function main() {
       },
       workOrder: {
         orderNumber: "WO-1003",
-        toDoText: "multimedia screen is not working properly /? diagnose electrical head unit",
-        isDone: false,
-        status: "IN_PROGRESS" as const,
+        notes: "Electrical check",
+        tasks: [
+          "Multimedia screen is not working properly / diagnose electrical head unit",
+        ],
       },
     },
     {
@@ -81,16 +82,13 @@ async function main() {
       },
       workOrder: {
         orderNumber: "WO-1004",
-        toDoText: "Upload on Deal center / take photos / change drive belt",
-        isDone: false,
-        status: "IN_PROGRESS" as const,
+        notes: "Drive belt & media",
+        tasks: [
+          "Upload on Deal Center",
+          "Take photos",
+          "Change drive belt (Serpentine)",
+        ],
       },
-      schedule: {
-        serviceName: "Serpentine & Drive Belt Inspection",
-        defaultToDoText: "Inspect drive belt tension and replace worn serpentine belt",
-        intervalMonths: 24,
-        intervalMiles: 30000,
-      }
     },
     {
       vehicle: {
@@ -104,9 +102,12 @@ async function main() {
       },
       workOrder: {
         orderNumber: "WO-1005",
-        toDoText: "Ar conditioner / front right light / Middle screen not working",
-        isDone: false,
-        status: "IN_PROGRESS" as const,
+        notes: "Tesla repairs",
+        tasks: [
+          "Air conditioner service",
+          "Front right headlight repair",
+          "Middle touch screen not working diagnosis",
+        ],
       },
     },
     {
@@ -121,11 +122,12 @@ async function main() {
       },
       workOrder: {
         orderNumber: "WO-1006",
-        toDoText: "OK - All initial repairs and prep completed",
+        notes: "Ready for sale",
         isDone: true,
-        status: "DONE" as const,
-        completedAt: new Date(),
-        completedBy: "Lead Prep Tech",
+        tasks: [
+          "OK - Intake inspection",
+          "OK - Detailing & prep",
+        ],
       },
     },
     {
@@ -140,9 +142,10 @@ async function main() {
       },
       workOrder: {
         orderNumber: "WO-1007",
-        toDoText: "Checking engine light - Run OBD2 scan & oxygen sensor diagnosis",
-        isDone: false,
-        status: "IN_PROGRESS" as const,
+        notes: "Engine scan",
+        tasks: [
+          "Checking engine light - Run OBD2 scan & oxygen sensor diagnosis",
+        ],
       },
     },
     {
@@ -157,16 +160,11 @@ async function main() {
       },
       workOrder: {
         orderNumber: "WO-1008",
-        toDoText: "trocar bateria (Replace 12V AGM Battery & test alternator charging)",
-        isDone: false,
-        status: "IN_PROGRESS" as const,
+        notes: "Battery replacement",
+        tasks: [
+          "Trocar bateria (Replace 12V Battery & test alternator charging)",
+        ],
       },
-      schedule: {
-        serviceName: "Battery & Electrical Charging System Test",
-        defaultToDoText: "Test CCA, clean terminals, inspect alternator voltage",
-        intervalMonths: 12,
-        intervalMiles: 15000,
-      }
     },
     {
       vehicle: {
@@ -180,64 +178,42 @@ async function main() {
       },
       workOrder: {
         orderNumber: "WO-1009",
-        toDoText: "4x4 transfer case service & differential fluid inspection",
-        isDone: false,
-        status: "IN_PROGRESS" as const,
+        notes: "Drivetrain service",
+        tasks: [
+          "4x4 transfer case service & differential fluid inspection",
+        ],
       },
     },
   ];
 
   for (const row of spreadsheetRows) {
-    const existing = await prisma.vehicle.findUnique({
-      where: { vin: row.vehicle.vin },
+    const createdVehicle = await prisma.vehicle.create({
+      data: row.vehicle,
     });
 
-    let vehicleId = existing?.id;
-    if (!existing) {
-      const created = await prisma.vehicle.create({
-        data: row.vehicle,
-      });
-      vehicleId = created.id;
-      console.log(`Created vehicle: ${created.year} ${created.make} ${created.model} (${created.vin})`);
-    }
-
-    if (vehicleId) {
-      const existingWO = await prisma.workOrder.findUnique({
-        where: { orderNumber: row.workOrder.orderNumber },
-      });
-      if (!existingWO) {
-        await prisma.workOrder.create({
-          data: {
-            ...row.workOrder,
-            vehicleId,
-          },
-        });
-        console.log(`Created work order: ${row.workOrder.orderNumber} for vehicle ${row.vehicle.model}`);
-      }
-
-      if (row.schedule) {
-        const nextDueDate = new Date();
-        nextDueDate.setMonth(nextDueDate.getMonth() + (row.schedule.intervalMonths || 6));
-        const nextDueMileage = row.vehicle.currentMileage + (row.schedule.intervalMiles || 5000);
-
-        await prisma.maintenanceSchedule.create({
-          data: {
-            vehicleId,
-            serviceName: row.schedule.serviceName,
-            defaultToDoText: row.schedule.defaultToDoText,
-            intervalMonths: row.schedule.intervalMonths,
-            intervalMiles: row.schedule.intervalMiles,
-            nextDueDate,
-            nextDueMileage,
-            isActive: true,
-          },
-        });
-        console.log(`Created maintenance schedule: ${row.schedule.serviceName}`);
-      }
-    }
+    const isDone = row.workOrder.isDone || false;
+    await prisma.workOrder.create({
+      data: {
+        orderNumber: row.workOrder.orderNumber,
+        vehicleId: createdVehicle.id,
+        notes: row.workOrder.notes,
+        isDone,
+        status: isDone ? "DONE" : "IN_PROGRESS",
+        completedAt: isDone ? new Date() : null,
+        items: {
+          create: row.workOrder.tasks.map((taskText, idx) => ({
+            taskText,
+            orderIndex: idx,
+            isCompleted: isDone,
+            completedAt: isDone ? new Date() : null,
+          })),
+        },
+      },
+    });
+    console.log(`✓ Seeded: ${createdVehicle.year} ${createdVehicle.make} ${createdVehicle.model} with ${row.workOrder.tasks.length} tasks`);
   }
 
-  console.log("Seeding complete! 9 spreadsheet vehicles and work orders initialized.");
+  console.log("Seeding complete! All 9 spreadsheet vehicles and itemized checklists initialized successfully.");
 }
 
 main()

@@ -1,11 +1,8 @@
 import { Vehicle } from "@/core/domain/entities/Vehicle";
-import { WorkOrder } from "@/core/domain/entities/WorkOrder";
-import { MaintenanceSchedule } from "@/core/domain/entities/MaintenanceSchedule";
+import { WorkOrder, WorkOrderItem } from "@/core/domain/entities/WorkOrder";
 import { IVehicleRepository } from "@/core/domain/repositories/IVehicleRepository";
 import { IWorkOrderRepository } from "@/core/domain/repositories/IWorkOrderRepository";
-import { IScheduleRepository } from "@/core/domain/repositories/IScheduleRepository";
 
-// In-Memory Repository Harness implementations for isolated high-speed validation
 export class InMemoryVehicleRepository implements IVehicleRepository {
   public vehicles: Map<string, Vehicle> = new Map();
 
@@ -61,10 +58,18 @@ export class InMemoryVehicleRepository implements IVehicleRepository {
 
 export class InMemoryWorkOrderRepository implements IWorkOrderRepository {
   public workOrders: Map<string, WorkOrder> = new Map();
+  public itemsMap: Map<string, WorkOrderItem> = new Map();
 
   async create(workOrder: WorkOrder): Promise<WorkOrder> {
     const id = workOrder.id || `wo-${this.workOrders.size + 1}`;
-    const saved = new WorkOrder({ ...workOrder, id });
+    const items = workOrder.items.map((it, idx) => {
+      const itemId = it.id || `item-${this.itemsMap.size + idx + 1}`;
+      const item = new WorkOrderItem({ ...it, id: itemId, workOrderId: id });
+      this.itemsMap.set(itemId, item);
+      return item;
+    });
+
+    const saved = new WorkOrder({ ...workOrder, id, items });
     this.workOrders.set(id, saved);
     return saved;
   }
@@ -93,7 +98,9 @@ export class InMemoryWorkOrderRepository implements IWorkOrderRepository {
     if (filter?.search) {
       const q = filter.search.toLowerCase();
       result = result.filter(
-        (w) => w.toDoText.toLowerCase().includes(q) || w.orderNumber.toLowerCase().includes(q)
+        (w) =>
+          w.orderNumber.toLowerCase().includes(q) ||
+          w.items.some((i) => i.taskText.toLowerCase().includes(q))
       );
     }
     return result;
@@ -102,6 +109,41 @@ export class InMemoryWorkOrderRepository implements IWorkOrderRepository {
   async update(workOrder: WorkOrder): Promise<WorkOrder> {
     this.workOrders.set(workOrder.id, workOrder);
     return workOrder;
+  }
+
+  async toggleItem(itemId: string, isCompleted: boolean, completedBy?: string | null): Promise<WorkOrder> {
+    const item = this.itemsMap.get(itemId);
+    if (!item) throw new Error(`Item ${itemId} not found in harness`);
+    item.toggle(isCompleted, completedBy);
+
+    const wo = this.workOrders.get(item.workOrderId);
+    if (!wo) throw new Error("Work order not found");
+    
+    wo.toggleItem(itemId, isCompleted, completedBy);
+    return wo;
+  }
+
+  async addItem(workOrderId: string, taskText: string): Promise<WorkOrderItem> {
+    const wo = this.workOrders.get(workOrderId);
+    if (!wo) throw new Error("Work order not found");
+    const itemId = `item-${this.itemsMap.size + 1}`;
+    const item = new WorkOrderItem({ id: itemId, workOrderId, taskText, isCompleted: false });
+    this.itemsMap.set(itemId, item);
+    wo.items.push(item);
+    wo.checkOverallStatus();
+    return item;
+  }
+
+  async removeItem(itemId: string): Promise<void> {
+    const item = this.itemsMap.get(itemId);
+    if (item) {
+      this.itemsMap.delete(itemId);
+      const wo = this.workOrders.get(item.workOrderId);
+      if (wo) {
+        wo.items = wo.items.filter((i) => i.id !== itemId);
+        wo.checkOverallStatus();
+      }
+    }
   }
 
   async delete(id: string): Promise<void> {
@@ -116,46 +158,12 @@ export class InMemoryWorkOrderRepository implements IWorkOrderRepository {
   }
 }
 
-export class InMemoryScheduleRepository implements IScheduleRepository {
-  public schedules: Map<string, MaintenanceSchedule> = new Map();
-
-  async create(schedule: MaintenanceSchedule): Promise<MaintenanceSchedule> {
-    const id = schedule.id || `sch-${this.schedules.size + 1}`;
-    const saved = new MaintenanceSchedule({ ...schedule, id });
-    this.schedules.set(id, saved);
-    return saved;
-  }
-
-  async findById(id: string): Promise<MaintenanceSchedule | null> {
-    return this.schedules.get(id) || null;
-  }
-
-  async findByVehicleId(vehicleId: string): Promise<MaintenanceSchedule[]> {
-    return Array.from(this.schedules.values()).filter((s) => s.vehicleId === vehicleId);
-  }
-
-  async listActive(): Promise<MaintenanceSchedule[]> {
-    return Array.from(this.schedules.values()).filter((s) => s.isActive);
-  }
-
-  async update(schedule: MaintenanceSchedule): Promise<MaintenanceSchedule> {
-    this.schedules.set(schedule.id, schedule);
-    return schedule;
-  }
-
-  async delete(id: string): Promise<void> {
-    this.schedules.delete(id);
-  }
-}
-
 describe("AAW GarageFlow Evaluation Test Harness - Baseline", () => {
-  it("should initialize in-memory evaluation harness successfully", () => {
+  it("should initialize in-memory evaluation harness with multi-task support", () => {
     const vehicleRepo = new InMemoryVehicleRepository();
     const workOrderRepo = new InMemoryWorkOrderRepository();
-    const scheduleRepo = new InMemoryScheduleRepository();
 
     expect(vehicleRepo).toBeDefined();
     expect(workOrderRepo).toBeDefined();
-    expect(scheduleRepo).toBeDefined();
   });
 });

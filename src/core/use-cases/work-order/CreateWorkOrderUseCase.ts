@@ -1,12 +1,11 @@
 import { IWorkOrderRepository } from "@/core/domain/repositories/IWorkOrderRepository";
 import { IVehicleRepository } from "@/core/domain/repositories/IVehicleRepository";
-import { WorkOrder } from "@/core/domain/entities/WorkOrder";
+import { WorkOrder, WorkOrderItem } from "@/core/domain/entities/WorkOrder";
 
 export interface CreateWorkOrderDTO {
   vehicleId: string;
-  toDoText: string;
+  tasks?: string[] | string; // Can accept an array of tasks or multi-line text
   notes?: string | null;
-  scheduledDate?: Date | null;
 }
 
 export class CreateWorkOrderUseCase {
@@ -21,15 +20,35 @@ export class CreateWorkOrderUseCase {
       throw new Error(`Vehicle with ID ${dto.vehicleId} was not found.`);
     }
 
+    let taskList: string[] = [];
+    if (Array.isArray(dto.tasks)) {
+      taskList = dto.tasks.filter((t) => t && t.trim().length > 0);
+    } else if (typeof dto.tasks === "string") {
+      // Split by newline or slashes/dashes if provided as block text
+      taskList = dto.tasks
+        .split(/\n|(?:\s*\/\s*(?=[A-Z|a-z]))|(?:\s*-\s*(?=[A-Z|a-z]))/)
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+    }
+
+    if (taskList.length === 0) {
+      taskList = ["General Intake Inspection"];
+    }
+
     const count = await this.workOrderRepository.count();
     const orderNumber = `WO-${1000 + count + 1}`;
+
+    const items = taskList.map((taskText, idx) => ({
+      taskText,
+      orderIndex: idx,
+      isCompleted: false,
+    }));
 
     const workOrder = new WorkOrder({
       orderNumber,
       vehicleId: dto.vehicleId,
-      toDoText: dto.toDoText,
       notes: dto.notes,
-      scheduledDate: dto.scheduledDate,
+      items,
       isDone: false,
       status: "IN_PROGRESS",
     });
