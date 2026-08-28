@@ -1,0 +1,106 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum WorkOrderStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum ScheduleRecurrenceType {
+  TIME_BASED
+  MILEAGE_BASED
+  BOTH
+}
+
+model Vehicle {
+  id              String                @id @default(uuid())
+  vin             String                @unique
+  year            Int
+  make            String
+  model           String
+  trim            String?
+  color           String
+  licensePlate    String?
+  currentMileage  Int                   @default(0)
+  sourceTag       String                @default("AAW Dealer")
+  status          String                @default("ACTIVE")
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  workOrders      WorkOrder[]
+  schedules       MaintenanceSchedule[]
+
+  @@index([vin])
+  @@index([sourceTag])
+  @@index([status])
+}
+
+model WorkOrder {
+  id              String          @id @default(uuid())
+  orderNumber     String          @unique
+  vehicleId       String
+  vehicle         Vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  
+  toDoText        String
+  isDone          Boolean         @default(false)
+  status          WorkOrderStatus @default(IN_PROGRESS)
+  
+  scheduledDate   DateTime?
+  completedAt     DateTime?
+  completedBy     String?
+  notes           String?
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([vehicleId])
+  @@index([status])
+  @@index([isDone])
+  @@index([createdAt])
+}
+
+model MaintenanceSchedule {
+  id                   String                 @id @default(uuid())
+  vehicleId            String
+  vehicle              Vehicle                @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  
+  serviceName          String
+  defaultToDoText      String
+  recurrenceType       ScheduleRecurrenceType @default(BOTH)
+  
+  intervalMonths       Int?
+  intervalMiles        Int?
+  
+  lastServicedDate     DateTime?
+  lastServicedMileage  Int?
+  
+  nextDueDate          DateTime?
+  nextDueMileage       Int?
+  
+  isActive             Boolean                @default(true)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  @@index([vehicleId])
+  @@index([isActive])
+  @@index([nextDueDate])
+  @@index([nextDueMileage])
+}
+
+model SystemUser {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  role      String   @default("TECHNICIAN")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
