@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { PrismaVehicleRepository } from "@/infrastructure/database/repositories/PrismaVehicleRepository";
 import { PrismaWorkOrderRepository } from "@/infrastructure/database/repositories/PrismaWorkOrderRepository";
-import { PrismaScheduleRepository } from "@/infrastructure/database/repositories/PrismaScheduleRepository";
 import { GetDashboardMetricsUseCase } from "@/core/use-cases/dashboard/GetDashboardMetricsUseCase";
 
 const vehicleRepo = new PrismaVehicleRepository();
 const workOrderRepo = new PrismaWorkOrderRepository();
-const scheduleRepo = new PrismaScheduleRepository();
-const getMetricsUseCase = new GetDashboardMetricsUseCase(vehicleRepo, workOrderRepo, scheduleRepo);
+const getMetricsUseCase = new GetDashboardMetricsUseCase(vehicleRepo, workOrderRepo);
 
 export async function GET() {
   try {

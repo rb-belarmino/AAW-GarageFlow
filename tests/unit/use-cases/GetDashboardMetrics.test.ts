@@ -20,9 +20,9 @@ describe("GetDashboardMetricsUseCase", () => {
     const v3 = await createVehicle.execute({ vin: "VIN3", year: 2022, make: "Chevy", model: "Equinox", color: "White" });
 
     // Create work orders
-    const wo1 = await createWorkOrder.execute({ vehicleId: v1.id, toDoText: "OK" });
-    const wo2 = await createWorkOrder.execute({ vehicleId: v2.id, toDoText: "Checking engine light" });
-    const wo3 = await createWorkOrder.execute({ vehicleId: v3.id, toDoText: "Multimedia screen fix" });
+    const wo1 = await createWorkOrder.execute({ vehicleId: v1.id, tasks: "OK" });
+    const wo2 = await createWorkOrder.execute({ vehicleId: v2.id, tasks: "Checking engine light" });
+    const wo3 = await createWorkOrder.execute({ vehicleId: v3.id, tasks: "Multimedia screen fix" });
 
     // Mark wo1 as Done (✓)
     await toggleDone.execute({ workOrderId: wo1.id, isDone: true });

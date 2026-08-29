@@ -30,7 +30,7 @@ describe("Evaluation Harness - User Story 3 (Fleet Dashboard Summary)", () => {
     const workOrderIds: string[] = [];
     for (const v of vehiclesData) {
       const veh = await createVehicle.execute(v);
-      const wo = await createWorkOrder.execute({ vehicleId: veh.id, toDoText: "General Inspection" });
+      const wo = await createWorkOrder.execute({ vehicleId: veh.id, tasks: "General Inspection" });
       workOrderIds.push(wo.id);
     }
 

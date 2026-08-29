@@ -1,14 +1,47 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaNeon } from "@prisma/adapter-neon";
+import bcrypt from "bcryptjs";
+import * as dotenv from "dotenv";
 
-const prisma = new PrismaClient();
+dotenv.config();
+
+const connectionString = process.env.DATABASE_URL;
+const adapter = new PrismaNeon({ connectionString: connectionString! });
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log("Resetting and seeding inventory from 'Dealer cars _ to do.xlsx'...");
+  console.log("Resetting and seeding inventory and initial users...");
 
   // Clean existing records to allow fresh multi-item seed
   await prisma.workOrderItem.deleteMany();
   await prisma.workOrder.deleteMany();
   await prisma.vehicle.deleteMany();
+  await prisma.systemUser.deleteMany();
+
+  // 1. Seed System Users (Password: Password123!)
+  const passwordHash = await bcrypt.hash("Password123!", 10);
+
+  const admin = await prisma.systemUser.create({
+    data: {
+      username: "admin",
+      passwordHash,
+      name: "Shop Administrator",
+      role: "MANAGER",
+      isActive: true,
+    },
+  });
+
+  const tech1 = await prisma.systemUser.create({
+    data: {
+      username: "tech1",
+      passwordHash,
+      name: "Alex Technician",
+      role: "TECHNICIAN",
+      isActive: true,
+    },
+  });
+
+  console.log(`✓ Seeded users: ${admin.username} (MANAGER), ${tech1.username} (TECHNICIAN)`);
 
   const spreadsheetRows = [
     {
@@ -213,7 +246,7 @@ async function main() {
     console.log(`✓ Seeded: ${createdVehicle.year} ${createdVehicle.make} ${createdVehicle.model} with ${row.workOrder.tasks.length} tasks`);
   }
 
-  console.log("Seeding complete! All 9 spreadsheet vehicles and itemized checklists initialized successfully.");
+  console.log("Seeding complete! Initial users and vehicles populated.");
 }
 
 main()

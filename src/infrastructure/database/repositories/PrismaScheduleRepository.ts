@@ -1,73 +1,46 @@
 import { IScheduleRepository } from "@/core/domain/repositories/IScheduleRepository";
-import { MaintenanceSchedule, ScheduleRecurrenceType } from "@/core/domain/entities/MaintenanceSchedule";
-import { prisma } from "../prisma";
+import { MaintenanceSchedule } from "@/core/domain/entities/MaintenanceSchedule";
 
+// In-memory fallback repository for Maintenance Schedules
 export class PrismaScheduleRepository implements IScheduleRepository {
-  async create(schedule: MaintenanceSchedule): Promise<MaintenanceSchedule> {
-    const created = await prisma.maintenanceSchedule.create({
-      data: {
-        id: schedule.id || undefined,
-        vehicleId: schedule.vehicleId,
-        serviceName: schedule.serviceName,
-        defaultToDoText: schedule.defaultToDoText,
-        recurrenceType: schedule.recurrenceType as any,
-        intervalMonths: schedule.intervalMonths,
-        intervalMiles: schedule.intervalMiles,
-        lastServicedDate: schedule.lastServicedDate,
-        lastServicedMileage: schedule.lastServicedMileage,
-        nextDueDate: schedule.nextDueDate,
-        nextDueMileage: schedule.nextDueMileage,
-        isActive: schedule.isActive,
-      },
-    });
+  private schedules: MaintenanceSchedule[] = [];
 
-    return new MaintenanceSchedule(created as any);
+  async create(schedule: MaintenanceSchedule): Promise<MaintenanceSchedule> {
+    const id = schedule.id || `sched-${Date.now()}`;
+    const newSchedule = new MaintenanceSchedule({
+      ...schedule,
+      id,
+    });
+    this.schedules.push(newSchedule);
+    return newSchedule;
   }
 
   async findById(id: string): Promise<MaintenanceSchedule | null> {
-    const found = await prisma.maintenanceSchedule.findUnique({
-      where: { id },
-    });
-    return found ? new MaintenanceSchedule(found as any) : null;
+    const found = this.schedules.find((s) => s.id === id);
+    return found ? new MaintenanceSchedule(found) : null;
   }
 
   async findByVehicleId(vehicleId: string): Promise<MaintenanceSchedule[]> {
-    const records = await prisma.maintenanceSchedule.findMany({
-      where: { vehicleId },
-      orderBy: { createdAt: "desc" },
-    });
-    return records.map((r) => new MaintenanceSchedule(r as any));
+    return this.schedules
+      .filter((s) => s.vehicleId === vehicleId)
+      .map((s) => new MaintenanceSchedule(s));
   }
 
   async listActive(): Promise<MaintenanceSchedule[]> {
-    const records = await prisma.maintenanceSchedule.findMany({
-      where: { isActive: true },
-      include: { vehicle: true },
-    });
-    return records.map((r) => new MaintenanceSchedule(r as any));
+    return this.schedules
+      .filter((s) => s.isActive)
+      .map((s) => new MaintenanceSchedule(s));
   }
 
   async update(schedule: MaintenanceSchedule): Promise<MaintenanceSchedule> {
-    const updated = await prisma.maintenanceSchedule.update({
-      where: { id: schedule.id },
-      data: {
-        serviceName: schedule.serviceName,
-        defaultToDoText: schedule.defaultToDoText,
-        recurrenceType: schedule.recurrenceType as any,
-        intervalMonths: schedule.intervalMonths,
-        intervalMiles: schedule.intervalMiles,
-        lastServicedDate: schedule.lastServicedDate,
-        lastServicedMileage: schedule.lastServicedMileage,
-        nextDueDate: schedule.nextDueDate,
-        nextDueMileage: schedule.nextDueMileage,
-        isActive: schedule.isActive,
-      },
-    });
-
-    return new MaintenanceSchedule(updated as any);
+    const index = this.schedules.findIndex((s) => s.id === schedule.id);
+    if (index >= 0) {
+      this.schedules[index] = new MaintenanceSchedule(schedule);
+    }
+    return schedule;
   }
 
   async delete(id: string): Promise<void> {
-    await prisma.maintenanceSchedule.delete({ where: { id } });
+    this.schedules = this.schedules.filter((s) => s.id !== id);
   }
 }

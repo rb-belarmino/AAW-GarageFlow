@@ -40,11 +40,15 @@ export class EvaluateRecurringSchedulesUseCase {
         const autoWorkOrder = new WorkOrder({
           orderNumber,
           vehicleId: vehicle.id,
-          toDoText: `[AUTO-DISPATCHED] ${schedule.serviceName}: ${schedule.defaultToDoText} (Triggered by ${evalResult.reason})`,
+          items: [
+            {
+              taskText: `[AUTO-DISPATCHED] ${schedule.serviceName}: ${schedule.defaultToDoText} (Triggered by ${evalResult.reason})`,
+              isCompleted: false,
+            },
+          ],
           notes: `Generated automatically via recurring maintenance schedule (${schedule.serviceName})`,
           status: "IN_PROGRESS",
           isDone: false,
-          scheduledDate: currentDate,
         });
 
         const createdOrder = await this.workOrderRepository.create(autoWorkOrder);
