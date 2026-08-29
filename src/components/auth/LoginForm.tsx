@@ -1,45 +1,51 @@
-"use client";
+'use client'
 
-import React, { useState } from "react";
-import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Wrench, KeyRound, User as UserIcon, AlertCircle, Loader2 } from "lucide-react";
+import React, { useState } from 'react'
+import { signIn } from 'next-auth/react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import {
+  Wrench,
+  KeyRound,
+  User as UserIcon,
+  AlertCircle,
+  Loader2
+} from 'lucide-react'
 
 export function LoginForm() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/";
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const callbackUrl = searchParams.get('callbackUrl') || '/'
 
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
 
     try {
-      const res = await signIn("credentials", {
+      const res = await signIn('credentials', {
         username: username.trim(),
         password,
         redirect: false,
-        callbackUrl,
-      });
+        callbackUrl
+      })
 
       if (res?.error) {
-        setError("Invalid username or password. Please check your credentials.");
-        setLoading(false);
+        setError('Invalid username or password. Please check your credentials.')
+        setLoading(false)
       } else {
-        router.push(callbackUrl);
-        router.refresh();
+        router.push(callbackUrl)
+        router.refresh()
       }
     } catch (err) {
-      setError("An unexpected error occurred during sign in. Please try again.");
-      setLoading(false);
+      setError('An unexpected error occurred during sign in. Please try again.')
+      setLoading(false)
     }
-  };
+  }
 
   return (
     <div className="w-full max-w-md space-y-6 rounded-xl border bg-card p-8 shadow-lg">
@@ -47,7 +53,9 @@ export function LoginForm() {
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md">
           <Wrench className="h-6 w-6" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">AAW GarageFlow</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          AAW GarageFlow
+        </h1>
         <p className="text-sm text-muted-foreground">
           Enter your shop credentials to access the fleet & work order system.
         </p>
@@ -79,7 +87,7 @@ export function LoginForm() {
               required
               autoFocus
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={e => setUsername(e.target.value)}
               placeholder="e.g. admin or tech1"
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 pl-9 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             />
@@ -100,7 +108,7 @@ export function LoginForm() {
               type="password"
               required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 pl-9 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             />
@@ -118,14 +126,10 @@ export function LoginForm() {
               Signing In...
             </>
           ) : (
-            "Sign In to GarageFlow"
+            'Sign In to GarageFlow'
           )}
         </button>
       </form>
-
-      <div className="border-t pt-4 text-center text-xs text-muted-foreground">
-        Default shop access: <span className="font-mono font-medium">admin</span> / <span className="font-mono font-medium">Password123!</span>
-      </div>
     </div>
-  );
+  )
 }
