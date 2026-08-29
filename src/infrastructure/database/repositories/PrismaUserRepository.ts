@@ -47,7 +47,7 @@ export class PrismaUserRepository implements UserRepository {
     });
 
     return rawList.map(
-      (raw) =>
+      (raw: any) =>
         new User({
           id: raw.id,
           username: raw.username,

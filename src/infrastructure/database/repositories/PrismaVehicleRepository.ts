@@ -56,7 +56,7 @@ export class PrismaVehicleRepository implements IVehicleRepository {
       orderBy: { createdAt: "desc" },
     });
 
-    return records.map((r) => new Vehicle(r));
+    return records.map((r: any) => new Vehicle(r));
   }
 
   async update(vehicle: Vehicle): Promise<Vehicle> {

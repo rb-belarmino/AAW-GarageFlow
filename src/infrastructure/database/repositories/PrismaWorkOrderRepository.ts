@@ -68,9 +68,10 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
     if (filter?.status) where.status = filter.status;
     if (filter?.isDone !== undefined) where.isDone = filter.isDone;
     if (filter?.search) {
+      const search = filter.search.trim();
       where.OR = [
-        { orderNumber: { contains: filter.search, mode: "insensitive" } },
-        { items: { some: { taskText: { contains: filter.search, mode: "insensitive" } } } },
+        { orderNumber: { contains: search, mode: "insensitive" } },
+        { items: { some: { taskText: { contains: search, mode: "insensitive" } } } },
       ];
     }
 
@@ -84,11 +85,11 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
       orderBy: { createdAt: "desc" },
     });
 
-    return records.map((r) => new WorkOrder(r as any));
+    return records.map((r: any) => new WorkOrder(r as any));
   }
 
   async update(workOrder: WorkOrder): Promise<WorkOrder> {
-    return await prisma.$transaction(async (tx) => {
+    return await prisma.$transaction(async (tx: any) => {
       // If items are provided on the entity, sync them
       if (workOrder.items && workOrder.items.length > 0) {
         const existingItems = await tx.workOrderItem.findMany({
@@ -98,7 +99,7 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
         const incomingItemIds = new Set(workOrder.items.filter((i) => Boolean(i.id)).map((i) => i.id));
 
         // Delete items removed in UI
-        const toDeleteIds = existingItems.filter((item) => !incomingItemIds.has(item.id)).map((item) => item.id);
+        const toDeleteIds = existingItems.filter((item: any) => !incomingItemIds.has(item.id)).map((item: any) => item.id);
         if (toDeleteIds.length > 0) {
           await tx.workOrderItem.deleteMany({
             where: { id: { in: toDeleteIds } },
@@ -108,7 +109,7 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
         // Upsert incoming items
         for (let idx = 0; idx < workOrder.items.length; idx++) {
           const item = workOrder.items[idx];
-          if (item.id && existingItems.some((e) => e.id === item.id)) {
+          if (item.id && existingItems.some((e: any) => e.id === item.id)) {
             await tx.workOrderItem.update({
               where: { id: item.id },
               data: {
@@ -141,7 +142,7 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
         orderBy: { orderIndex: "asc" },
       });
 
-      const allDone = currentItems.length > 0 && currentItems.every((i) => i.isCompleted);
+      const allDone = currentItems.length > 0 && currentItems.every((i: any) => i.isCompleted);
       const isDone = workOrder.isDone !== undefined ? workOrder.isDone : allDone;
       const status = workOrder.status || (isDone ? "DONE" : "IN_PROGRESS");
 
@@ -181,7 +182,7 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
       where: { workOrderId: item.workOrderId },
     });
 
-    const allDone = allItems.length > 0 && allItems.every((i) => i.isCompleted);
+    const allDone = allItems.length > 0 && allItems.every((i: any) => i.isCompleted);
 
     const updatedOrder = await prisma.workOrder.update({
       where: { id: item.workOrderId },
@@ -225,7 +226,7 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
     if (item) {
       await prisma.workOrderItem.delete({ where: { id: itemId } });
       const remaining = await prisma.workOrderItem.findMany({ where: { workOrderId: item.workOrderId } });
-      const allDone = remaining.length > 0 && remaining.every((i) => i.isCompleted);
+      const allDone = remaining.length > 0 && remaining.every((i: any) => i.isCompleted);
       await prisma.workOrder.update({
         where: { id: item.workOrderId },
         data: { isDone: allDone, status: allDone ? "DONE" : "IN_PROGRESS" },
