@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { Wrench, Car, ArrowRight, FileSpreadsheet, CheckCircle2, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +16,11 @@ import { formatDate } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    redirect("/login");
+  }
+
   const vehicleRepo = new PrismaVehicleRepository();
   const workOrderRepo = new PrismaWorkOrderRepository();
   const getMetricsUseCase = new GetDashboardMetricsUseCase(vehicleRepo, workOrderRepo);

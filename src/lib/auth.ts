@@ -67,7 +67,13 @@ export function createAuthOptions(customRepo?: UserRepository, customHasher?: Pa
         return session;
       },
     },
-    secret: process.env.NEXTAUTH_SECRET || "aaw-garageflow-super-secret-jwt-key-change-in-prod-2026",
+    secret:
+      process.env.NEXTAUTH_SECRET ||
+      (process.env.NODE_ENV === "production"
+        ? (() => {
+            throw new Error("NEXTAUTH_SECRET environment variable is required in production!");
+          })()
+        : "aaw-garageflow-dev-secret-key-do-not-use-in-production"),
   };
 }
 

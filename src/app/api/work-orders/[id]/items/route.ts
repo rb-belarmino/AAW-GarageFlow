@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { PrismaWorkOrderRepository } from "@/infrastructure/database/repositories/PrismaWorkOrderRepository";
 import { AddWorkOrderItemUseCase } from "@/core/use-cases/work-order/AddWorkOrderItemUseCase";
 
@@ -10,9 +12,18 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id } = await params;
     const body = await request.json();
-    const taskText = body.taskText;
+    const taskText = typeof body?.taskText === "string" ? body.taskText.trim() : "";
+
+    if (!taskText) {
+      return NextResponse.json({ success: false, error: "Task description cannot be empty" }, { status: 400 });
+    }
 
     const item = await addUseCase.execute({
       workOrderId: id,

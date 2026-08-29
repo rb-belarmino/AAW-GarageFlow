@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { UserPlus, Users, AlertCircle, ShieldAlert } from "lucide-react";
 import { UserListTable, UserItem } from "@/components/users/UserListTable";
 import { CreateUserModal } from "@/components/users/CreateUserModal";
@@ -9,6 +10,7 @@ import { EditUserModal } from "@/components/users/EditUserModal";
 
 export default function UsersPage() {
   const { data: session, status } = useSession();
+  const router = useRouter();
   const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,10 +38,12 @@ export default function UsersPage() {
   };
 
   useEffect(() => {
-    if (status === "authenticated") {
+    if (status === "unauthenticated") {
+      router.push("/login");
+    } else if (status === "authenticated") {
       fetchUsers();
     }
-  }, [status]);
+  }, [status, router]);
 
   if (status === "loading") {
     return (

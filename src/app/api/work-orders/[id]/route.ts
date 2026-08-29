@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { PrismaWorkOrderRepository } from "@/infrastructure/database/repositories/PrismaWorkOrderRepository";
 import { PrismaVehicleRepository } from "@/infrastructure/database/repositories/PrismaVehicleRepository";
 import { UpdateWorkOrderUseCase } from "@/core/use-cases/work-order/UpdateWorkOrderUseCase";
@@ -12,6 +14,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id } = await params;
     const workOrder = await workOrderRepo.findById(id);
     if (!workOrder) {
@@ -28,8 +35,17 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     const { id } = await params;
     const body = await request.json();
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ success: false, error: "Invalid request payload" }, { status: 400 });
+    }
+
     const updated = await updateWorkOrderUseCase.execute({
       id,
       ...body,
