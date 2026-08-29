@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Plus, Search, Car, AlertCircle, Pencil, Wrench } from "lucide-react";
+import { Plus, Search, Car, AlertCircle, Pencil, Wrench, Sparkles, Loader2, Check, Camera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { formatMileage, formatDate } from "@/lib/utils";
+import { BarcodeScannerModal } from "./BarcodeScannerModal";
 
 export interface VehicleRecord {
   id: string;
@@ -31,6 +32,16 @@ export function VehicleManagement() {
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+
+  // Scanner modal state
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isScanningForEdit, setIsScanningForEdit] = useState(false);
+
+  // VIN Decoder States
+  const [decodingVin, setDecodingVin] = useState(false);
+  const [decodingEditVin, setDecodingEditVin] = useState(false);
+  const [decodedSuccessMsg, setDecodedSuccessMsg] = useState<string | null>(null);
+  const [decodedEditSuccessMsg, setDecodedEditSuccessMsg] = useState<string | null>(null);
 
   // New Vehicle form state
   const [formData, setFormData] = useState({
@@ -84,6 +95,88 @@ export function VehicleManagement() {
     fetchVehicles();
   }, [search]);
 
+  // Decode VIN from government NHTSA API
+  const handleDecodeVin = async (isEdit: boolean = false, overrideVin?: string) => {
+    const targetVin = overrideVin || (isEdit ? editFormData?.vin : formData.vin);
+    if (!targetVin || targetVin.trim().length !== 17) {
+      if (isEdit) setEditError("Please enter a full 17-character VIN first to decode.");
+      else setError("Please enter a full 17-character VIN first to decode.");
+      return;
+    }
+
+    if (isEdit) {
+      setDecodingEditVin(true);
+      setEditError(null);
+      setDecodedEditSuccessMsg(null);
+    } else {
+      setDecodingVin(true);
+      setError(null);
+      setDecodedSuccessMsg(null);
+    }
+
+    try {
+      const res = await fetch(`/api/vehicles/decode-vin?vin=${encodeURIComponent(targetVin.trim())}`);
+      const json = await res.json();
+
+      if (!json.success || !json.data) {
+        throw new Error(json.error || "Could not decode VIN information.");
+      }
+
+      const info = json.data;
+
+      if (isEdit && editFormData) {
+        setEditFormData((prev) =>
+          prev
+            ? {
+                ...prev,
+                vin: targetVin.trim().toUpperCase(),
+                year: info.year || prev.year,
+                make: info.make || prev.make,
+                model: info.model || prev.model,
+                trim: info.trim || prev.trim,
+              }
+            : null
+        );
+        setDecodedEditSuccessMsg(`✓ Decoded: ${info.year} ${info.make} ${info.model} ${info.trim ? `(${info.trim})` : ""}`);
+      } else {
+        setFormData((prev) => ({
+          ...prev,
+          vin: targetVin.trim().toUpperCase(),
+          year: info.year || prev.year,
+          make: info.make || prev.make,
+          model: info.model || prev.model,
+          trim: info.trim || prev.trim,
+        }));
+        setDecodedSuccessMsg(`✓ Decoded: ${info.year} ${info.make} ${info.model} ${info.trim ? `(${info.trim})` : ""}`);
+      }
+    } catch (err: any) {
+      if (isEdit) setEditError(err.message || "Failed to decode VIN.");
+      else setError(err.message || "Failed to decode VIN.");
+    } finally {
+      if (isEdit) setDecodingEditVin(false);
+      else setDecodingVin(false);
+    }
+  };
+
+  // When barcode scanner detects a VIN
+  const handleBarcodeDetected = (scannedVin: string) => {
+    if (isScanningForEdit) {
+      if (editFormData) {
+        setEditFormData({
+          ...editFormData,
+          vin: scannedVin,
+        });
+      }
+      handleDecodeVin(true, scannedVin);
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        vin: scannedVin,
+      }));
+      handleDecodeVin(false, scannedVin);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -103,6 +196,7 @@ export function VehicleManagement() {
         return;
       }
       setIsOpen(false);
+      setDecodedSuccessMsg(null);
       setFormData({
         vin: "",
         year: new Date().getFullYear(),
@@ -122,6 +216,7 @@ export function VehicleManagement() {
 
   const handleOpenEdit = (veh: VehicleRecord) => {
     setEditError(null);
+    setDecodedEditSuccessMsg(null);
     setEditFormData({
       id: veh.id,
       vin: veh.vin,
@@ -181,9 +276,12 @@ export function VehicleManagement() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Vehicles Inventory</h1>
-          <p className="text-sm text-muted-foreground">Manage dealership units, mileage records, VIN identifiers, and quick edit</p>
+          <p className="text-sm text-muted-foreground">
+            Manage dealership units, mileage records, Barcode Scanner, VIN auto-decoding (NHTSA API), and quick edit
+          </p>
         </div>
 
+        {/* Add Vehicle Dialog */}
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogTrigger asChild>
             <Button className="flex items-center gap-2">
@@ -193,15 +291,96 @@ export function VehicleManagement() {
           </DialogTrigger>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Register New Vehicle</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <Car className="h-4 w-4 text-primary" />
+                Register New Vehicle
+              </DialogTitle>
             </DialogHeader>
+
             {error && (
-              <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-xs text-destructive">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
-            <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+
+            {decodedSuccessMsg && (
+              <div className="flex items-center gap-2 rounded-md bg-emerald-500/10 p-2.5 text-xs text-emerald-600 font-medium">
+                <Check className="h-3.5 w-3.5 shrink-0" />
+                <span>{decodedSuccessMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4 pt-1">
+              {/* VIN Input with Scan & Auto-Decode Buttons */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold">VIN (17 Characters) *</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsScanningForEdit(false);
+                        setIsScannerOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors"
+                    >
+                      <Camera className="h-3 w-3" />
+                      Scan Barcode
+                    </button>
+                    <span className="text-muted-foreground text-xs">•</span>
+                    <button
+                      type="button"
+                      onClick={() => handleDecodeVin(false)}
+                      disabled={decodingVin || formData.vin.length < 17}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-primary/80 disabled:opacity-40 transition-colors"
+                    >
+                      {decodingVin ? (
+                        <>
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Decoding...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-3 w-3" />
+                          Auto-fill
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    required
+                    maxLength={17}
+                    placeholder="e.g. 2HGFE2F53PH518377"
+                    className="font-mono text-xs uppercase"
+                    value={formData.vin}
+                    onChange={(e) => {
+                      const val = e.target.value.toUpperCase();
+                      setFormData({ ...formData, vin: val });
+                      if (val.length === 17 && !formData.make) {
+                        setTimeout(() => handleDecodeVin(false), 200);
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setIsScanningForEdit(false);
+                      setIsScannerOpen(true);
+                    }}
+                    className="shrink-0 text-xs px-2.5 h-9"
+                    title="Scan VIN barcode using camera or photo"
+                  >
+                    <Camera className="h-3.5 w-3.5 text-primary mr-1" />
+                    Scan
+                  </Button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold">Year *</label>
@@ -216,7 +395,7 @@ export function VehicleManagement() {
                   <label className="text-xs font-semibold">Color *</label>
                   <Input
                     required
-                    placeholder="e.g. Gray, Black"
+                    placeholder="e.g. Aegean Blue, Black"
                     value={formData.color}
                     onChange={(e) => setFormData({ ...formData, color: e.target.value })}
                   />
@@ -228,7 +407,7 @@ export function VehicleManagement() {
                   <label className="text-xs font-semibold">Make *</label>
                   <Input
                     required
-                    placeholder="e.g. Chrysler, Jeep"
+                    placeholder="e.g. Honda, Toyota"
                     value={formData.make}
                     onChange={(e) => setFormData({ ...formData, make: e.target.value })}
                   />
@@ -237,7 +416,7 @@ export function VehicleManagement() {
                   <label className="text-xs font-semibold">Model *</label>
                   <Input
                     required
-                    placeholder="e.g. Pacifica, Sahara"
+                    placeholder="e.g. Civic, RAV4"
                     value={formData.model}
                     onChange={(e) => setFormData({ ...formData, model: e.target.value })}
                   />
@@ -246,9 +425,9 @@ export function VehicleManagement() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold">Trim (Optional)</label>
+                  <label className="text-xs font-semibold">Trim</label>
                   <Input
-                    placeholder="e.g. Touring L, Limited"
+                    placeholder="e.g. Sport, EX-L, Touring"
                     value={formData.trim}
                     onChange={(e) => setFormData({ ...formData, trim: e.target.value })}
                   />
@@ -261,17 +440,6 @@ export function VehicleManagement() {
                     onChange={(e) => setFormData({ ...formData, licensePlate: e.target.value })}
                   />
                 </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold">VIN (17 Characters) *</label>
-                <Input
-                  required
-                  placeholder="e.g. 1HGCR2F83HA123456"
-                  className="font-mono text-xs"
-                  value={formData.vin}
-                  onChange={(e) => setFormData({ ...formData, vin: e.target.value })}
-                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -292,7 +460,7 @@ export function VehicleManagement() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2 pt-2 border-t">
                 <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
                   Cancel
                 </Button>
@@ -311,14 +479,87 @@ export function VehicleManagement() {
                 Edit Vehicle Details
               </DialogTitle>
             </DialogHeader>
+
             {editError && (
-              <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-xs text-destructive">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{editError}</span>
               </div>
             )}
+
+            {decodedEditSuccessMsg && (
+              <div className="flex items-center gap-2 rounded-md bg-emerald-500/10 p-2.5 text-xs text-emerald-600 font-medium">
+                <Check className="h-3.5 w-3.5 shrink-0" />
+                <span>{decodedEditSuccessMsg}</span>
+              </div>
+            )}
+
             {editFormData && (
-              <form onSubmit={handleEditSubmit} className="space-y-4 pt-2">
+              <form onSubmit={handleEditSubmit} className="space-y-4 pt-1">
+                {/* VIN with Scan & Decode Button in Edit Modal */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold">VIN (17 Characters) *</label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsScanningForEdit(true);
+                          setIsScannerOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors"
+                      >
+                        <Camera className="h-3 w-3" />
+                        Scan Barcode
+                      </button>
+                      <span className="text-muted-foreground text-xs">•</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDecodeVin(true)}
+                        disabled={decodingEditVin || editFormData.vin.length < 17}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-primary/80 disabled:opacity-40 transition-colors"
+                      >
+                        {decodingEditVin ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Decoding...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-3 w-3" />
+                            Auto-fill
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Input
+                      required
+                      maxLength={17}
+                      placeholder="e.g. 1HGCR2F83HA123456"
+                      className="font-mono text-xs uppercase"
+                      value={editFormData.vin}
+                      onChange={(e) =>
+                        setEditFormData({ ...editFormData, vin: e.target.value.toUpperCase() })
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setIsScanningForEdit(true);
+                        setIsScannerOpen(true);
+                      }}
+                      className="shrink-0 text-xs px-2.5 h-9"
+                    >
+                      <Camera className="h-3.5 w-3.5 text-primary mr-1" />
+                      Scan
+                    </Button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-semibold">Year *</label>
@@ -380,24 +621,15 @@ export function VehicleManagement() {
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold">VIN (17 Characters) *</label>
-                  <Input
-                    required
-                    placeholder="e.g. 1HGCR2F83HA123456"
-                    className="font-mono text-xs"
-                    value={editFormData.vin}
-                    onChange={(e) => setEditFormData({ ...editFormData, vin: e.target.value })}
-                  />
-                </div>
-
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1 col-span-1">
                     <label className="text-xs font-semibold">Mileage</label>
                     <Input
                       type="number"
                       value={editFormData.currentMileage}
-                      onChange={(e) => setEditFormData({ ...editFormData, currentMileage: Number(e.target.value) })}
+                      onChange={(e) =>
+                        setEditFormData({ ...editFormData, currentMileage: Number(e.target.value) })
+                      }
                     />
                   </div>
                   <div className="space-y-1 col-span-1">
@@ -445,6 +677,13 @@ export function VehicleManagement() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Barcode Camera Scanner Modal */}
+      <BarcodeScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onVinDetected={handleBarcodeDetected}
+      />
 
       <div className="flex items-center gap-3">
         <div className="relative flex-1">
