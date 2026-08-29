@@ -186,6 +186,7 @@ export function VehicleManagement() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...formData,
+          color: formData.color.trim() || null,
           year: Number(formData.year),
           currentMileage: Number(formData.currentMileage),
         }),
@@ -224,7 +225,7 @@ export function VehicleManagement() {
       make: veh.make,
       model: veh.model,
       trim: veh.trim || "",
-      color: veh.color,
+      color: veh.color || "",
       licensePlate: veh.licensePlate || "",
       currentMileage: veh.currentMileage,
       sourceTag: veh.sourceTag,
@@ -249,7 +250,7 @@ export function VehicleManagement() {
           make: editFormData.make,
           model: editFormData.model,
           trim: editFormData.trim || null,
-          color: editFormData.color,
+          color: editFormData.color?.trim() || null,
           licensePlate: editFormData.licensePlate || null,
           currentMileage: Number(editFormData.currentMileage),
           sourceTag: editFormData.sourceTag,
@@ -392,9 +393,8 @@ export function VehicleManagement() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold">Color *</label>
+                  <label className="text-xs font-semibold">Color (Optional)</label>
                   <Input
-                    required
                     placeholder="e.g. Aegean Blue, Black"
                     value={formData.color}
                     onChange={(e) => setFormData({ ...formData, color: e.target.value })}
@@ -571,9 +571,8 @@ export function VehicleManagement() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold">Color *</label>
+                    <label className="text-xs font-semibold">Color (Optional)</label>
                     <Input
-                      required
                       placeholder="e.g. Gray, Black"
                       value={editFormData.color}
                       onChange={(e) => setEditFormData({ ...editFormData, color: e.target.value })}
@@ -736,7 +735,9 @@ export function VehicleManagement() {
                       >
                         {veh.year} {veh.make} {veh.model}
                       </span>
-                      <span className="text-xs text-muted-foreground">({veh.color})</span>
+                      {veh.color && veh.color !== "Unspecified" && (
+                        <span className="text-xs text-muted-foreground">({veh.color})</span>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="font-mono text-xs">

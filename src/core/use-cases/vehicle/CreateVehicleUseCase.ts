@@ -1,5 +1,5 @@
 import { IVehicleRepository } from "@/core/domain/repositories/IVehicleRepository";
-import { Vehicle, VehicleProps } from "@/core/domain/entities/Vehicle";
+import { Vehicle } from "@/core/domain/entities/Vehicle";
 
 export interface CreateVehicleDTO {
   vin: string;
@@ -7,7 +7,7 @@ export interface CreateVehicleDTO {
   make: string;
   model: string;
   trim?: string | null;
-  color: string;
+  color?: string | null;
   licensePlate?: string | null;
   currentMileage?: number;
   sourceTag?: string;
@@ -22,7 +22,10 @@ export class CreateVehicleUseCase {
       throw new Error(`Vehicle with VIN ${dto.vin.toUpperCase()} already exists in the system.`);
     }
 
-    const vehicle = new Vehicle(dto);
+    const vehicle = new Vehicle({
+      ...dto,
+      color: dto.color?.trim() || "Unspecified",
+    });
     return await this.vehicleRepository.create(vehicle);
   }
 }

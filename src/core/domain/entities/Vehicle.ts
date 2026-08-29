@@ -5,7 +5,7 @@ export interface VehicleProps {
   make: string;
   model: string;
   trim?: string | null;
-  color: string;
+  color?: string | null;
   licensePlate?: string | null;
   currentMileage?: number;
   sourceTag?: string;
@@ -42,9 +42,6 @@ export class Vehicle {
     if (!props.model || props.model.trim().length === 0) {
       throw new Error("Vehicle model is required.");
     }
-    if (!props.color || props.color.trim().length === 0) {
-      throw new Error("Vehicle color is required.");
-    }
 
     this.id = props.id || "";
     this.vin = props.vin.trim().toUpperCase();
@@ -52,7 +49,7 @@ export class Vehicle {
     this.make = props.make.trim();
     this.model = props.model.trim();
     this.trim = props.trim?.trim() || null;
-    this.color = props.color.trim();
+    this.color = props.color?.trim() || "Unspecified";
     this.licensePlate = props.licensePlate?.trim().toUpperCase() || null;
     this.currentMileage = props.currentMileage ?? 0;
     this.sourceTag = props.sourceTag?.trim() || "AAW Dealer";
