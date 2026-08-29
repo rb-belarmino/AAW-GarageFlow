@@ -5,13 +5,15 @@ import { useSession } from "next-auth/react";
 import { UserPlus, Users, AlertCircle, ShieldAlert } from "lucide-react";
 import { UserListTable, UserItem } from "@/components/users/UserListTable";
 import { CreateUserModal } from "@/components/users/CreateUserModal";
+import { EditUserModal } from "@/components/users/EditUserModal";
 
 export default function UsersPage() {
   const { data: session, status } = useSession();
   const [users, setUsers] = useState<UserItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserItem | null>(null);
 
   const fetchUsers = async () => {
     try {
@@ -69,18 +71,18 @@ export default function UsersPage() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-foreground">Staff & User Management</h1>
-            <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
               Manager Access
             </span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            Create, view, and manage technician and shop staff access accounts.
+            Create, edit roles, change passwords, and manage technician access accounts.
           </p>
         </div>
 
         <button
-          onClick={() => setIsModalOpen(true)}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow hover:bg-primary/90 transition-colors"
+          onClick={() => setIsCreateModalOpen(true)}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow hover:bg-primary/90 transition-colors"
         >
           <UserPlus className="h-4 w-4" />
           <span>Add New User</span>
@@ -88,18 +90,30 @@ export default function UsersPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
+        <div className="flex items-center gap-2 rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive">
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
-      <UserListTable users={users} loading={loading} />
+      <UserListTable
+        users={users}
+        loading={loading}
+        onEdit={(u) => setEditingUser(u)}
+        onDeleteSuccess={fetchUsers}
+      />
 
       <CreateUserModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
         onUserCreated={fetchUsers}
+      />
+
+      <EditUserModal
+        user={editingUser}
+        isOpen={!!editingUser}
+        onClose={() => setEditingUser(null)}
+        onUserUpdated={fetchUsers}
       />
     </div>
   );

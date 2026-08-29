@@ -1,5 +1,7 @@
 import { CreateUserUseCase } from "@/core/use-cases/auth/CreateUserUseCase";
 import { ListUsersUseCase } from "@/core/use-cases/auth/ListUsersUseCase";
+import { UpdateUserUseCase } from "@/core/use-cases/auth/UpdateUserUseCase";
+import { DeleteUserUseCase } from "@/core/use-cases/auth/DeleteUserUseCase";
 import { UserRepository } from "@/core/domain/repositories/UserRepository";
 import { BcryptPasswordHasher } from "@/infrastructure/security/BcryptPasswordHasher";
 import { User } from "@/core/domain/entities/User";
@@ -64,6 +66,70 @@ describe("User Management Use Cases", () => {
           role: "MANAGER",
         })
       ).rejects.toThrow("Username is already taken");
+    });
+  });
+
+  describe("UpdateUserUseCase", () => {
+    it("updates user fields and hashes new password if provided", async () => {
+      const useCase = new UpdateUserUseCase(mockUserRepository, mockPasswordHasher);
+      const existing = new User({
+        id: "u-1",
+        username: "tech1",
+        passwordHash: "old-hash",
+        name: "Old Name",
+        role: "TECHNICIAN",
+      });
+
+      mockUserRepository.findById.mockResolvedValue(existing);
+      mockPasswordHasher.hash.mockResolvedValue("new-hash-456");
+      mockUserRepository.update.mockImplementation(async (u) => u);
+
+      const updated = await useCase.execute({
+        id: "u-1",
+        name: "New Name",
+        role: "MANAGER",
+        password: "NewPassword123!",
+      });
+
+      expect(updated.name).toBe("New Name");
+      expect(updated.role).toBe("MANAGER");
+      expect(updated.passwordHash).toBe("new-hash-456");
+      expect(mockUserRepository.update).toHaveBeenCalled();
+    });
+  });
+
+  describe("DeleteUserUseCase", () => {
+    it("deletes user when user is not self", async () => {
+      const useCase = new DeleteUserUseCase(mockUserRepository);
+      mockUserRepository.findById.mockResolvedValue(
+        new User({
+          id: "u-2",
+          username: "tech1",
+          passwordHash: "hash",
+          name: "Tech One",
+          role: "TECHNICIAN",
+        })
+      );
+
+      await useCase.execute("u-2", "u-1");
+      expect(mockUserRepository.delete).toHaveBeenCalledWith("u-2");
+    });
+
+    it("prevents self deletion", async () => {
+      const useCase = new DeleteUserUseCase(mockUserRepository);
+      mockUserRepository.findById.mockResolvedValue(
+        new User({
+          id: "u-1",
+          username: "admin",
+          passwordHash: "hash",
+          name: "Admin",
+          role: "MANAGER",
+        })
+      );
+
+      await expect(useCase.execute("u-1", "u-1")).rejects.toThrow(
+        "You cannot delete your own active administrator account"
+      );
     });
   });
 
