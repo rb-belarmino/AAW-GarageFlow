@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { Wrench, Car, LayoutDashboard, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -32,8 +33,16 @@ export function Header() {
           href={isAuthenticated ? '/' : '/login'}
           className="flex items-center gap-3 group transition-opacity hover:opacity-90"
         >
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-            <Wrench className="h-4 w-4" />
+          <div className="relative flex h-11 w-11 shrink-0 items-center justify-center">
+            <Image
+              src="/logo.png"
+              alt="Atlantic Auto World Logo"
+              width={44}
+              height={44}
+              className="h-11 w-11 object-contain drop-shadow-sm transition-transform group-hover:scale-105"
+              unoptimized
+              priority
+            />
           </div>
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
