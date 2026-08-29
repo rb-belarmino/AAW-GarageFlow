@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Search, CheckCircle2, Circle, Clock, Wrench, AlertCircle, RefreshCw, ChevronDown, Trash2, Car } from "lucide-react";
+import Link from "next/link";
+import { Plus, Search, CheckCircle2, Circle, Clock, Wrench, AlertCircle, RefreshCw, ChevronDown, Trash2, Car, Pencil, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +49,7 @@ export function WorkOrderBoard() {
   const [loading, setLoading] = useState(true);
   const [filterDone, setFilterDone] = useState<string>("ALL"); // ALL, OPEN, DONE
   const [isOpen, setIsOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
   // Modal mode: "EXISTING_VEHICLE" or "NEW_VEHICLE"
   const [vehicleMode, setVehicleMode] = useState<"EXISTING_VEHICLE" | "NEW_VEHICLE">("EXISTING_VEHICLE");
@@ -66,11 +68,23 @@ export function WorkOrderBoard() {
     sourceTag: "AAW Dealer",
   });
 
-  // Tasks & Notes
+  // Tasks & Notes for creation
   const [tasksList, setTasksList] = useState<string[]>([""]);
   const [notes, setNotes] = useState("");
   const [newItemTexts, setNewItemTexts] = useState<{ [woId: string]: string }>({});
   const [error, setError] = useState<string | null>(null);
+
+  // Edit Work Order Form State
+  const [editFormData, setEditFormData] = useState<{
+    id: string;
+    orderNumber: string;
+    vehicleId: string;
+    status: string;
+    notes: string;
+    items: Array<{ id?: string; taskText: string; isCompleted: boolean }>;
+  } | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchWorkOrders = async () => {
     try {
@@ -191,7 +205,6 @@ export function WorkOrderBoard() {
     const validTasks = tasksList.map((t) => t.trim()).filter((t) => t.length > 0);
     if (validTasks.length === 0) {
       setError("Please specify at least one To Do task.");
-      return;
     }
 
     let targetVehicleId = selectedVehicleId;
@@ -263,6 +276,100 @@ export function WorkOrderBoard() {
     }
   };
 
+  // Edit Work Order Handlers
+  const handleOpenEdit = (wo: WorkOrderRecord) => {
+    setEditError(null);
+    setEditFormData({
+      id: wo.id,
+      orderNumber: wo.orderNumber,
+      vehicleId: wo.vehicleId,
+      status: wo.status,
+      notes: wo.notes || "",
+      items: wo.items.map((i) => ({
+        id: i.id,
+        taskText: i.taskText,
+        isCompleted: i.isCompleted,
+      })),
+    });
+    setIsEditOpen(true);
+  };
+
+  const handleEditTaskChange = (index: number, text: string) => {
+    if (!editFormData) return;
+    const newItems = [...editFormData.items];
+    newItems[index] = { ...newItems[index], taskText: text };
+    setEditFormData({ ...editFormData, items: newItems });
+  };
+
+  const handleEditTaskToggle = (index: number) => {
+    if (!editFormData) return;
+    const newItems = [...editFormData.items];
+    newItems[index] = { ...newItems[index], isCompleted: !newItems[index].isCompleted };
+    setEditFormData({ ...editFormData, items: newItems });
+  };
+
+  const handleEditAddTask = () => {
+    if (!editFormData) return;
+    setEditFormData({
+      ...editFormData,
+      items: [...editFormData.items, { taskText: "", isCompleted: false }],
+    });
+  };
+
+  const handleEditRemoveTask = (index: number) => {
+    if (!editFormData) return;
+    if (editFormData.items.length <= 1) {
+      setEditError("A work order must have at least one task.");
+      return;
+    }
+    const newItems = editFormData.items.filter((_, i) => i !== index);
+    setEditFormData({ ...editFormData, items: newItems });
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editFormData) return;
+    setEditError(null);
+
+    const validItems = editFormData.items
+      .map((item) => ({ ...item, taskText: item.taskText.trim() }))
+      .filter((item) => item.taskText.length > 0);
+
+    if (validItems.length === 0) {
+      setEditError("Please keep at least one valid task description.");
+      return;
+    }
+
+    setSavingEdit(true);
+
+    try {
+      const res = await fetch(`/api/work-orders/${editFormData.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vehicleId: editFormData.vehicleId,
+          status: editFormData.status,
+          notes: editFormData.notes,
+          items: validItems,
+        }),
+      });
+
+      const json = await res.json();
+      if (!json.success) {
+        setEditError(json.error || "Failed to update work order");
+        return;
+      }
+
+      setIsEditOpen(false);
+      setEditFormData(null);
+      fetchWorkOrders();
+    } catch (err: any) {
+      setEditError(err.message || "An unexpected error occurred while updating.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const vehicleMap = new Map(vehicles.map((v) => [v.id, v]));
   const doneCount = workOrders.filter((w) => w.isDone).length;
   const openCount = workOrders.filter((w) => !w.isDone).length;
@@ -278,7 +385,7 @@ export function WorkOrderBoard() {
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            Manage individual inspection and repair tasks per vehicle order with live checkoffs
+            Manage individual inspection and repair tasks per vehicle order with live checkoffs & editing
           </p>
         </div>
 
@@ -504,6 +611,146 @@ export function WorkOrderBoard() {
         </div>
       </div>
 
+      {/* Edit Work Order Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="sm:max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-4 w-4 text-primary" />
+              Edit Work Order {editFormData?.orderNumber}
+            </DialogTitle>
+          </DialogHeader>
+
+          {editError && (
+            <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{editError}</span>
+            </div>
+          )}
+
+          {editFormData && (
+            <form onSubmit={handleEditSubmit} className="space-y-4 pt-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold">Assigned Vehicle *</label>
+                  <select
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    value={editFormData.vehicleId}
+                    onChange={(e) => setEditFormData({ ...editFormData, vehicleId: e.target.value })}
+                  >
+                    {vehicles.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.year} {v.make} {v.model} ({v.color}) - {v.vin}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold">Order Status</label>
+                  <select
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    value={editFormData.status}
+                    onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                  >
+                    <option value="OPEN">OPEN</option>
+                    <option value="IN_PROGRESS">IN PROGRESS</option>
+                    <option value="DONE">DONE (COMPLETED)</option>
+                    <option value="CANCELLED">CANCELLED</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Tasks List */}
+              <div className="space-y-2 pt-2 border-t">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold">Edit Checklist Tasks *</label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleEditAddTask}
+                    className="h-7 text-xs text-primary"
+                  >
+                    <Plus className="h-3 w-3 mr-1" /> Add Task
+                  </Button>
+                </div>
+
+                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                  {editFormData.items.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2 p-1.5 rounded-md border bg-card/60">
+                      <button
+                        type="button"
+                        onClick={() => handleEditTaskToggle(idx)}
+                        className="p-1 text-muted-foreground hover:text-foreground shrink-0"
+                        title={item.isCompleted ? "Mark incomplete" : "Mark completed"}
+                      >
+                        {item.isCompleted ? (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        ) : (
+                          <Circle className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+
+                      <Input
+                        required
+                        value={item.taskText}
+                        onChange={(e) => handleEditTaskChange(idx, e.target.value)}
+                        className={`h-8 text-xs flex-1 ${item.isCompleted ? "line-through opacity-70" : ""}`}
+                        placeholder="Task description..."
+                      />
+
+                      {editFormData.items.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:bg-destructive/10 shrink-0"
+                          onClick={() => handleEditRemoveTask(idx)}
+                          title="Remove this task"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold">Internal Shop Notes</label>
+                <Input
+                  value={editFormData.notes}
+                  onChange={(e) => setEditFormData({ ...editFormData, notes: e.target.value })}
+                  placeholder="Notes, waiting on parts, etc."
+                />
+              </div>
+
+              <div className="flex justify-between items-center pt-3 border-t">
+                {vehicleMap.get(editFormData.vehicleId) && (
+                  <Link
+                    href={`/vehicles?search=${encodeURIComponent(vehicleMap.get(editFormData.vehicleId)!.vin)}`}
+                    className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
+                    onClick={() => setIsEditOpen(false)}
+                  >
+                    <Car className="h-3.5 w-3.5" /> Edit Vehicle Record
+                  </Link>
+                )}
+
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => setIsEditOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={savingEdit}>
+                    {savingEdit ? "Saving..." : "Save Changes"}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <div className="flex flex-col sm:flex-row items-center gap-3">
         <div className="relative flex-1 w-full">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -564,13 +811,29 @@ export function WorkOrderBoard() {
                 <CardContent className="p-4 sm:p-5">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 border-b gap-2">
                     <div>
-                      <div className="flex items-center gap-2.5">
-                        <span className="font-mono font-bold text-sm bg-primary/10 text-primary px-2 py-0.5 rounded">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <span
+                          className="font-mono font-bold text-sm bg-primary/10 text-primary px-2 py-0.5 rounded cursor-pointer hover:bg-primary/20 transition-colors"
+                          onClick={() => handleOpenEdit(wo)}
+                          title="Click to edit work order"
+                        >
                           {wo.orderNumber}
                         </span>
-                        <span className="font-semibold text-base">
-                          {veh ? `${veh.year} ${veh.make} ${veh.model} (${veh.color})` : "Unknown Vehicle"}
-                        </span>
+
+                        {veh ? (
+                          <Link
+                            href={`/vehicles?search=${encodeURIComponent(veh.vin)}`}
+                            className="font-semibold text-base hover:text-primary hover:underline flex items-center gap-1.5"
+                            title="Click to view/edit this vehicle in inventory"
+                          >
+                            <span>{veh.year} {veh.make} {veh.model}</span>
+                            <span className="text-xs font-normal text-muted-foreground">({veh.color})</span>
+                            <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                          </Link>
+                        ) : (
+                          <span className="font-semibold text-base">Unknown Vehicle</span>
+                        )}
+
                         <span className="text-xs font-mono text-muted-foreground">
                           VIN: {veh?.vin || "N/A"}
                         </span>
@@ -578,6 +841,16 @@ export function WorkOrderBoard() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2.5 text-xs flex items-center gap-1 hover:bg-primary/10 hover:text-primary"
+                        onClick={() => handleOpenEdit(wo)}
+                      >
+                        <Pencil className="h-3 w-3" />
+                        Edit
+                      </Button>
+
                       <Badge variant={wo.isDone ? "success" : "warning"} className="text-xs">
                         {wo.isDone ? "ALL TASKS DONE" : `${completedCount}/${totalCount} TASKS DONE (${progressPercent}%)`}
                       </Badge>

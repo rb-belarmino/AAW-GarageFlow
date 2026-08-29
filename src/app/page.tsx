@@ -86,10 +86,14 @@ export default async function DashboardPage() {
                   <div key={order.id} className="p-4 flex items-start justify-between gap-4 hover:bg-muted/30 transition-colors">
                     <div className="space-y-1.5 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-semibold">
-                          {order.orderNumber}
-                        </span>
-                        <span className="font-semibold text-sm">{order.vehicleName}</span>
+                        <Link href={`/work-orders?search=${encodeURIComponent(order.orderNumber)}`}>
+                          <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded font-semibold hover:underline">
+                            {order.orderNumber}
+                          </span>
+                        </Link>
+                        <Link href={`/vehicles?search=${encodeURIComponent(order.vin)}`} className="font-semibold text-sm hover:underline hover:text-primary">
+                          {order.vehicleName}
+                        </Link>
                         <span className="font-mono text-xs text-muted-foreground">({order.vin})</span>
                       </div>
                       <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">

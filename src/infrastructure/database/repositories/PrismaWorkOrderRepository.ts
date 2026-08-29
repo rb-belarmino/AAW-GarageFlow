@@ -88,23 +88,82 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
   }
 
   async update(workOrder: WorkOrder): Promise<WorkOrder> {
-    const updated = await prisma.workOrder.update({
-      where: { id: workOrder.id },
-      data: {
-        isDone: workOrder.isDone,
-        status: workOrder.status,
-        completedAt: workOrder.completedAt,
-        completedBy: workOrder.completedBy,
-        notes: workOrder.notes,
-      },
-      include: {
-        items: {
-          orderBy: { orderIndex: "asc" },
-        },
-      },
-    });
+    return await prisma.$transaction(async (tx) => {
+      // If items are provided on the entity, sync them
+      if (workOrder.items && workOrder.items.length > 0) {
+        const existingItems = await tx.workOrderItem.findMany({
+          where: { workOrderId: workOrder.id },
+        });
 
-    return new WorkOrder(updated as any);
+        const incomingItemIds = new Set(workOrder.items.filter((i) => Boolean(i.id)).map((i) => i.id));
+
+        // Delete items removed in UI
+        const toDeleteIds = existingItems.filter((item) => !incomingItemIds.has(item.id)).map((item) => item.id);
+        if (toDeleteIds.length > 0) {
+          await tx.workOrderItem.deleteMany({
+            where: { id: { in: toDeleteIds } },
+          });
+        }
+
+        // Upsert incoming items
+        for (let idx = 0; idx < workOrder.items.length; idx++) {
+          const item = workOrder.items[idx];
+          if (item.id && existingItems.some((e) => e.id === item.id)) {
+            await tx.workOrderItem.update({
+              where: { id: item.id },
+              data: {
+                taskText: item.taskText,
+                isCompleted: item.isCompleted,
+                completedAt: item.isCompleted ? (item.completedAt || new Date()) : null,
+                completedBy: item.completedBy,
+                orderIndex: idx,
+              },
+            });
+          } else {
+            await tx.workOrderItem.create({
+              data: {
+                id: item.id || undefined,
+                workOrderId: workOrder.id,
+                taskText: item.taskText,
+                isCompleted: item.isCompleted,
+                completedAt: item.isCompleted ? new Date() : null,
+                completedBy: item.completedBy,
+                orderIndex: idx,
+              },
+            });
+          }
+        }
+      }
+
+      // Check all items to ensure status & isDone consistency
+      const currentItems = await tx.workOrderItem.findMany({
+        where: { workOrderId: workOrder.id },
+        orderBy: { orderIndex: "asc" },
+      });
+
+      const allDone = currentItems.length > 0 && currentItems.every((i) => i.isCompleted);
+      const isDone = workOrder.isDone !== undefined ? workOrder.isDone : allDone;
+      const status = workOrder.status || (isDone ? "DONE" : "IN_PROGRESS");
+
+      const updated = await tx.workOrder.update({
+        where: { id: workOrder.id },
+        data: {
+          vehicleId: workOrder.vehicleId,
+          isDone,
+          status,
+          completedAt: isDone ? (workOrder.completedAt || new Date()) : null,
+          completedBy: workOrder.completedBy,
+          notes: workOrder.notes,
+        },
+        include: {
+          items: {
+            orderBy: { orderIndex: "asc" },
+          },
+        },
+      });
+
+      return new WorkOrder(updated as any);
+    });
   }
 
   async toggleItem(itemId: string, isCompleted: boolean, completedBy?: string | null): Promise<WorkOrder> {
