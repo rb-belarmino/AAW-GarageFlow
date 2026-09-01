@@ -4,6 +4,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Camera, Upload, X, AlertCircle, Loader2, Sparkles, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BrowserMultiFormatReader, IScannerControls } from "@zxing/browser";
+import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 
 interface BarcodeScannerModalProps {
   isOpen: boolean;
@@ -20,19 +22,74 @@ export function BarcodeScannerModal({
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string>("Point camera at VIN barcode or upload a photo");
-  
+  const [statusMessage, setStatusMessage] = useState<string>(
+    "Point camera at VIN barcode or upload a photo"
+  );
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
+  const zxingReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+  const isScanningRef = useRef<boolean>(false);
 
   useEffect(() => {
     setMounted(true);
+    // Initialize ZXing hints and reader
+    const hints = new Map();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      BarcodeFormat.CODE_39,
+      BarcodeFormat.CODE_128,
+      BarcodeFormat.DATA_MATRIX,
+      BarcodeFormat.QR_CODE,
+      BarcodeFormat.PDF_417,
+      BarcodeFormat.UPC_A,
+      BarcodeFormat.EAN_13,
+      BarcodeFormat.ITF,
+    ]);
+    hints.set(DecodeHintType.TRY_HARDER, true);
+    zxingReaderRef.current = new BrowserMultiFormatReader(hints);
+
+    return () => {
+      stopCamera();
+    };
   }, []);
 
-  // Stop camera stream
+  // Clean / extract 17-char VIN candidate
+  const extractValidVin = (rawText: string): string | null => {
+    if (!rawText) return null;
+    const upper = rawText.toUpperCase().trim();
+
+    // Standard 17-char VIN matching (excludes letters I, O, Q which are invalid in VIN standard)
+    const strictMatch = upper.match(/[A-HJ-NPR-Z0-9]{17}/);
+    if (strictMatch) {
+      return strictMatch[0];
+    }
+
+    // Fallback: any 17 alphanumeric sequence
+    const cleaned = upper.replace(/[^A-Z0-9]/g, "");
+    const genericMatch = cleaned.match(/[A-Z0-9]{17}/);
+    if (genericMatch) {
+      return genericMatch[0];
+    }
+
+    if (cleaned.length === 17) {
+      return cleaned;
+    }
+
+    return null;
+  };
+
+  // Stop camera stream & scanner
   const stopCamera = () => {
+    isScanningRef.current = false;
+    if (controlsRef.current) {
+      try {
+        controlsRef.current.stop();
+      } catch {}
+      controlsRef.current = null;
+    }
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
@@ -43,7 +100,19 @@ export function BarcodeScannerModal({
     }
   };
 
-  // Start camera stream
+  const triggerSuccess = (detectedVin: string) => {
+    isScanningRef.current = false;
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      try {
+        navigator.vibrate(100);
+      } catch {}
+    }
+    stopCamera();
+    onVinDetected(detectedVin);
+    onClose();
+  };
+
+  // Start camera stream and scanner
   const startCamera = async () => {
     setCameraError(null);
     setStatusMessage("Opening camera...");
@@ -71,31 +140,46 @@ export function BarcodeScannerModal({
     }
   };
 
-  // Clean / extract 17-char VIN candidate
-  const extractValidVin = (rawText: string): string | null => {
-    if (!rawText) return null;
-    const cleaned = rawText.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    
-    // Look for exact 17 character alphanumeric string
-    const match = cleaned.match(/[A-HJ-NPR-Z0-9]{17}/);
-    if (match) return match[0];
-
-    // If 17 chars long
-    if (cleaned.length === 17) return cleaned;
-
-    return null;
-  };
-
-  // Live video frame barcode detection
-  const startLiveDetection = () => {
+  // Live video frame barcode detection with multi-engine support
+  const startLiveDetection = async () => {
     if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-
-    scanIntervalRef.current = setInterval(async () => {
-      if (!videoRef.current || !canvasRef.current) return;
-      if (videoRef.current.readyState !== videoRef.current.HAVE_ENOUGH_DATA) return;
-
+    if (controlsRef.current) {
       try {
-        if ("BarcodeDetector" in window) {
+        controlsRef.current.stop();
+      } catch {}
+      controlsRef.current = null;
+    }
+    isScanningRef.current = true;
+
+    // Engine 1: Start ZXing continuous scanner on the video element
+    if (zxingReaderRef.current && videoRef.current) {
+      try {
+        const controls = await zxingReaderRef.current.decodeFromVideoElement(
+          videoRef.current,
+          (result, error, scannerControls) => {
+            if (!isScanningRef.current) return;
+            if (result) {
+              const detected = extractValidVin(result.getText());
+              if (detected) {
+                scannerControls.stop();
+                triggerSuccess(detected);
+              }
+            }
+          }
+        );
+        controlsRef.current = controls;
+      } catch (err) {
+        console.warn("ZXing live stream attach warning:", err);
+      }
+    }
+
+    // Engine 2: BarcodeDetector fast loop in parallel if supported
+    if ("BarcodeDetector" in window) {
+      scanIntervalRef.current = setInterval(async () => {
+        if (!isScanningRef.current || !videoRef.current) return;
+        if (videoRef.current.readyState !== videoRef.current.HAVE_ENOUGH_DATA) return;
+
+        try {
           const detector = new (window as any).BarcodeDetector({
             formats: [
               "code_128",
@@ -111,21 +195,19 @@ export function BarcodeScannerModal({
             for (const b of barcodes) {
               const detected = extractValidVin(b.rawValue);
               if (detected) {
-                stopCamera();
-                onVinDetected(detected);
-                onClose();
+                triggerSuccess(detected);
                 return;
               }
             }
           }
+        } catch {
+          // ignore
         }
-      } catch (e) {
-        // scan catch
-      }
-    }, 400);
+      }, 250);
+    }
   };
 
-  // Photo upload detection fallback
+  // Photo upload detection with dual-engine fallback (iOS / Android / Desktop)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -135,28 +217,52 @@ export function BarcodeScannerModal({
     setStatusMessage("Scanning barcode from image...");
 
     try {
-      const bitmap = await createImageBitmap(file);
+      const objectUrl = URL.createObjectURL(file);
 
-      if ("BarcodeDetector" in window) {
-        const detector = new (window as any).BarcodeDetector({
-          formats: ["code_128", "code_39", "data_matrix", "qr_code", "pdf417"],
-        });
-        const barcodes = await detector.detect(bitmap);
-        if (barcodes && barcodes.length > 0) {
-          for (const b of barcodes) {
-            const detected = extractValidVin(b.rawValue);
+      // Attempt 1: ZXing Universal Decoder
+      if (zxingReaderRef.current) {
+        try {
+          const result = await zxingReaderRef.current.decodeFromImageUrl(objectUrl);
+          if (result) {
+            const detected = extractValidVin(result.getText());
             if (detected) {
-              stopCamera();
-              onVinDetected(detected);
-              onClose();
+              URL.revokeObjectURL(objectUrl);
+              triggerSuccess(detected);
               return;
             }
           }
+        } catch {
+          // Fall through to native detector or canvas if ZXing image decode needs another try
         }
       }
 
+      // Attempt 2: Native BarcodeDetector on image bitmap
+      if ("BarcodeDetector" in window) {
+        try {
+          const bitmap = await createImageBitmap(file);
+          const detector = new (window as any).BarcodeDetector({
+            formats: ["code_128", "code_39", "data_matrix", "qr_code", "pdf417", "upc_a"],
+          });
+          const barcodes = await detector.detect(bitmap);
+          if (barcodes && barcodes.length > 0) {
+            for (const b of barcodes) {
+              const detected = extractValidVin(b.rawValue);
+              if (detected) {
+                URL.revokeObjectURL(objectUrl);
+                triggerSuccess(detected);
+                return;
+              }
+            }
+          }
+        } catch {
+          // next fallback
+        }
+      }
+
+      URL.revokeObjectURL(objectUrl);
+
       throw new Error(
-        "Could not detect a standard 17-digit VIN barcode in this photo. Make sure the barcode is clear and well-lit, or type the VIN manually."
+        "Could not detect a standard 17-digit VIN barcode or QR code in this photo. Make sure the barcode is clear and well-lit, or type the VIN manually."
       );
     } catch (err: any) {
       setCameraError(err.message || "Failed to scan barcode from uploaded image.");
@@ -206,7 +312,9 @@ export function BarcodeScannerModal({
             </div>
             <div>
               <h2 className="text-base font-bold text-foreground">Scan VIN Barcode</h2>
-              <p className="text-xs text-muted-foreground">Door sticker, windshield, or vehicle barcode</p>
+              <p className="text-xs text-muted-foreground">
+                Door sticker, windshield, or vehicle barcode
+              </p>
             </div>
           </div>
           <button
