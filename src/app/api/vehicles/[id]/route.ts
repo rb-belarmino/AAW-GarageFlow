@@ -3,9 +3,11 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { PrismaVehicleRepository } from "@/infrastructure/database/repositories/PrismaVehicleRepository";
 import { UpdateVehicleUseCase } from "@/core/use-cases/vehicle/UpdateVehicleUseCase";
+import { DeleteVehicleUseCase } from "@/core/use-cases/vehicle/DeleteVehicleUseCase";
 
 const vehicleRepo = new PrismaVehicleRepository();
 const updateVehicleUseCase = new UpdateVehicleUseCase(vehicleRepo);
+const deleteVehicleUseCase = new DeleteVehicleUseCase(vehicleRepo);
 
 export async function GET(
   request: Request,
@@ -62,3 +64,31 @@ export async function PATCH(
 ) {
   return PUT(request, { params });
 }
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Only MANAGER or ADMIN role can delete vehicles
+    const userRole = session.user.role;
+    if (userRole !== "MANAGER" && userRole !== "ADMIN") {
+      return NextResponse.json(
+        { success: false, error: "Forbidden. Only Managers and Administrators have permission to delete vehicles." },
+        { status: 403 }
+      );
+    }
+
+    const { id } = await params;
+    await deleteVehicleUseCase.execute(id);
+    return NextResponse.json({ success: true, message: "Vehicle deleted successfully" });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+  }
+}
+
