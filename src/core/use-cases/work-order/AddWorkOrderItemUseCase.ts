@@ -4,6 +4,7 @@ import { WorkOrderItem } from "@/core/domain/entities/WorkOrder";
 export interface AddWorkOrderItemDTO {
   workOrderId: string;
   taskText: string;
+  notes?: string | null;
 }
 
 export class AddWorkOrderItemUseCase {
@@ -13,6 +14,11 @@ export class AddWorkOrderItemUseCase {
     if (!dto.taskText || dto.taskText.trim().length === 0) {
       throw new Error("Task item text cannot be empty.");
     }
-    return await this.workOrderRepository.addItem(dto.workOrderId, dto.taskText.trim());
+    return await this.workOrderRepository.addItem(
+      dto.workOrderId,
+      dto.taskText.trim(),
+      dto.notes?.trim() || null
+    );
   }
 }
+

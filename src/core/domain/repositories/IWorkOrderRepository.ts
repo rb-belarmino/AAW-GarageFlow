@@ -12,8 +12,11 @@ export interface IWorkOrderRepository {
   }): Promise<WorkOrder[]>;
   update(workOrder: WorkOrder): Promise<WorkOrder>;
   toggleItem(itemId: string, isCompleted: boolean, completedBy?: string | null): Promise<WorkOrder>;
-  addItem(workOrderId: string, taskText: string): Promise<WorkOrderItem>;
+  addItem(workOrderId: string, taskText: string, notes?: string | null): Promise<WorkOrderItem>;
+  updateItem(itemId: string, data: { taskText?: string; notes?: string | null }): Promise<WorkOrderItem>;
   removeItem(itemId: string): Promise<void>;
+
+
   delete(id: string): Promise<void>;
   count(filter?: { isDone?: boolean; status?: WorkOrderStatusType }): Promise<number>;
 }

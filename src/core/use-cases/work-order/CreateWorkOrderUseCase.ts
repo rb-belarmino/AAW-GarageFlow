@@ -2,9 +2,14 @@ import { IWorkOrderRepository } from "@/core/domain/repositories/IWorkOrderRepos
 import { IVehicleRepository } from "@/core/domain/repositories/IVehicleRepository";
 import { WorkOrder, WorkOrderItem } from "@/core/domain/entities/WorkOrder";
 
+export interface CreateTaskItemDTO {
+  taskText: string;
+  notes?: string | null;
+}
+
 export interface CreateWorkOrderDTO {
   vehicleId: string;
-  tasks?: string[] | string; // Can accept an array of tasks or multi-line text
+  tasks?: Array<string | CreateTaskItemDTO> | string; // Can accept array of strings, objects or multi-line text
   notes?: string | null;
 }
 
@@ -20,19 +25,31 @@ export class CreateWorkOrderUseCase {
       throw new Error(`Vehicle with ID ${dto.vehicleId} was not found.`);
     }
 
-    let taskList: string[] = [];
+    let itemsInput: CreateTaskItemDTO[] = [];
+
     if (Array.isArray(dto.tasks)) {
-      taskList = dto.tasks.filter((t) => t && t.trim().length > 0);
+      for (const t of dto.tasks) {
+        if (typeof t === "string" && t.trim().length > 0) {
+          itemsInput.push({ taskText: t.trim(), notes: null });
+        } else if (t && typeof t === "object" && typeof t.taskText === "string" && t.taskText.trim().length > 0) {
+          itemsInput.push({ taskText: t.taskText.trim(), notes: t.notes?.trim() || null });
+        }
+      }
     } else if (typeof dto.tasks === "string") {
       // Split by newline or slashes/dashes if provided as block text
-      taskList = dto.tasks
+      const splits = dto.tasks
         .split(/\n|(?:\s*\/\s*(?=[A-Z|a-z]))|(?:\s*-\s*(?=[A-Z|a-z]))/)
         .map((t) => t.trim())
         .filter((t) => t.length > 0);
+
+      for (const t of splits) {
+        itemsInput.push({ taskText: t, notes: null });
+      }
     }
 
-    if (taskList.length === 0) {
-      taskList = ["General Intake Inspection"];
+
+    if (itemsInput.length === 0) {
+      itemsInput = [{ taskText: "General Intake Inspection", notes: null }];
     }
 
     // Collision-proof orderNumber calculation
@@ -46,8 +63,9 @@ export class CreateWorkOrderUseCase {
     }
     const orderNumber = candidate;
 
-    const items = taskList.map((taskText, idx) => ({
-      taskText,
+    const items = itemsInput.map((item, idx) => ({
+      taskText: item.taskText,
+      notes: item.notes || null,
       orderIndex: idx,
       isCompleted: false,
     }));
@@ -58,6 +76,7 @@ export class CreateWorkOrderUseCase {
       notes: dto.notes,
       items,
       isDone: false,
+
       status: "IN_PROGRESS",
     });
 

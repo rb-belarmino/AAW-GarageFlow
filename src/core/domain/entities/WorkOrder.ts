@@ -4,6 +4,7 @@ export interface WorkOrderItemProps {
   id?: string;
   workOrderId?: string;
   taskText: string;
+  notes?: string | null;
   isCompleted?: boolean;
   completedAt?: Date | null;
   completedBy?: string | null;
@@ -16,6 +17,7 @@ export class WorkOrderItem {
   public readonly id: string;
   public readonly workOrderId: string;
   public taskText: string;
+  public notes?: string | null;
   public isCompleted: boolean;
   public completedAt?: Date | null;
   public completedBy?: string | null;
@@ -30,6 +32,7 @@ export class WorkOrderItem {
     this.id = props.id || "";
     this.workOrderId = props.workOrderId || "";
     this.taskText = props.taskText.trim();
+    this.notes = props.notes ? props.notes.trim() : null;
     this.isCompleted = props.isCompleted ?? false;
     this.completedAt = props.completedAt || (this.isCompleted ? new Date() : null);
     this.completedBy = props.completedBy || null;
@@ -37,6 +40,7 @@ export class WorkOrderItem {
     this.createdAt = props.createdAt || new Date();
     this.updatedAt = props.updatedAt || new Date();
   }
+
 
   public toggle(completed: boolean, completedBy?: string | null): void {
     this.isCompleted = completed;
@@ -110,15 +114,17 @@ export class WorkOrder {
     }
   }
 
-  public addItem(taskText: string): void {
+  public addItem(taskText: string, notes?: string | null): void {
     this.items.push(new WorkOrderItem({
       taskText,
+      notes,
       workOrderId: this.id,
       orderIndex: this.items.length,
       isCompleted: false,
     }));
     this.checkOverallStatus();
   }
+
 
   public checkOverallStatus(): void {
     if (this.items.length > 0 && this.items.every((i) => i.isCompleted)) {

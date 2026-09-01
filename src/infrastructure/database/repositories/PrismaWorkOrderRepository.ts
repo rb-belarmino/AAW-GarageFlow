@@ -18,10 +18,12 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
           create: workOrder.items.map((it, idx) => ({
             id: it.id || undefined,
             taskText: it.taskText,
+            notes: it.notes || null,
             isCompleted: it.isCompleted,
             orderIndex: idx,
           })),
         },
+
       },
       include: {
         items: {
@@ -114,6 +116,7 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
               where: { id: item.id },
               data: {
                 taskText: item.taskText,
+                notes: item.notes || null,
                 isCompleted: item.isCompleted,
                 completedAt: item.isCompleted ? (item.completedAt || new Date()) : null,
                 completedBy: item.completedBy,
@@ -126,6 +129,7 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
                 id: item.id || undefined,
                 workOrderId: workOrder.id,
                 taskText: item.taskText,
+                notes: item.notes || null,
                 isCompleted: item.isCompleted,
                 completedAt: item.isCompleted ? new Date() : null,
                 completedBy: item.completedBy,
@@ -134,6 +138,7 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
             });
           }
         }
+
       }
 
       // Check all items to ensure status & isDone consistency
@@ -201,16 +206,18 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
     return new WorkOrder(updatedOrder as any);
   }
 
-  async addItem(workOrderId: string, taskText: string): Promise<WorkOrderItem> {
+  async addItem(workOrderId: string, taskText: string, notes?: string | null): Promise<WorkOrderItem> {
     const count = await prisma.workOrderItem.count({ where: { workOrderId } });
     const created = await prisma.workOrderItem.create({
       data: {
         workOrderId,
         taskText,
+        notes: notes || null,
         orderIndex: count,
         isCompleted: false,
       },
     });
+
 
     // Ensure order is updated to IN_PROGRESS if a new pending item is added
     await prisma.workOrder.update({
@@ -221,7 +228,20 @@ export class PrismaWorkOrderRepository implements IWorkOrderRepository {
     return new WorkOrderItem(created as any);
   }
 
+  async updateItem(itemId: string, data: { taskText?: string; notes?: string | null }): Promise<WorkOrderItem> {
+    const updated = await prisma.workOrderItem.update({
+      where: { id: itemId },
+      data: {
+        ...(data.taskText !== undefined ? { taskText: data.taskText.trim() } : {}),
+        ...(data.notes !== undefined ? { notes: data.notes ? data.notes.trim() : null } : {}),
+      },
+    });
+
+    return new WorkOrderItem(updated as any);
+  }
+
   async removeItem(itemId: string): Promise<void> {
+
     const item = await prisma.workOrderItem.findUnique({ where: { id: itemId } });
     if (item) {
       await prisma.workOrderItem.delete({ where: { id: itemId } });

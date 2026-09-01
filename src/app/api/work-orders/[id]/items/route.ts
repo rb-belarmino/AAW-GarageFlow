@@ -20,6 +20,7 @@ export async function POST(
     const { id } = await params;
     const body = await request.json();
     const taskText = typeof body?.taskText === "string" ? body.taskText.trim() : "";
+    const notes = typeof body?.notes === "string" ? body.notes.trim() : null;
 
     if (!taskText) {
       return NextResponse.json({ success: false, error: "Task description cannot be empty" }, { status: 400 });
@@ -28,9 +29,11 @@ export async function POST(
     const item = await addUseCase.execute({
       workOrderId: id,
       taskText,
+      notes,
     });
 
     return NextResponse.json({ success: true, data: item }, { status: 201 });
+
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });
   }

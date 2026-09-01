@@ -64,10 +64,12 @@ model WorkOrderItem {
   workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   
   taskText    String
+  notes       String?
   isCompleted Boolean   @default(false)
   completedAt DateTime?
   completedBy String?
   orderIndex  Int       @default(0)
+
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

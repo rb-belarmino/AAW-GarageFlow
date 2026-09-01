@@ -78,4 +78,38 @@ describe("UpdateWorkOrderUseCase", () => {
     expect(updated.status).toBe("DONE");
     expect(updated.completedAt).toBeDefined();
   });
+
+  it("should create and update tasks with optional notes", async () => {
+    const vehicle = await createVehicleUseCase.execute({
+      vin: "1HGCR2F83HA777777",
+      year: 2021,
+      make: "Toyota",
+      model: "Camry",
+      color: "White",
+    });
+
+    const workOrder = await createWorkOrderUseCase.execute({
+      vehicleId: vehicle.id,
+      tasks: [
+        { taskText: "Oil Change", notes: "Use 0W-20 Mobil 1" },
+        { taskText: "Cabin Filter", notes: "Part in stock on shelf A2" },
+      ],
+    });
+
+    expect(workOrder.items[0].taskText).toBe("Oil Change");
+    expect(workOrder.items[0].notes).toBe("Use 0W-20 Mobil 1");
+    expect(workOrder.items[1].notes).toBe("Part in stock on shelf A2");
+
+    const updated = await updateWorkOrderUseCase.execute({
+      id: workOrder.id,
+      items: [
+        { id: workOrder.items[0].id, taskText: "Oil Change", notes: "Oil replaced with 0W-20", isCompleted: true },
+        { taskText: "Check Tire Pressure", notes: "Set to 35 PSI", isCompleted: false },
+      ],
+    });
+
+    expect(updated.items[0].notes).toBe("Oil replaced with 0W-20");
+    expect(updated.items[1].notes).toBe("Set to 35 PSI");
+  });
 });
+

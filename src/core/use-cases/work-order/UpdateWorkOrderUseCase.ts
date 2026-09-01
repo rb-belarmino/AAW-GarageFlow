@@ -12,6 +12,7 @@ export interface UpdateWorkOrderDTO {
   items?: Array<{
     id?: string;
     taskText: string;
+    notes?: string | null;
     isCompleted?: boolean;
     orderIndex?: number;
   }>;
@@ -50,6 +51,7 @@ export class UpdateWorkOrderUseCase {
         id: it.id,
         workOrderId: existing.id,
         taskText: it.taskText,
+        notes: it.notes !== undefined ? (it.notes ? it.notes.trim() : null) : null,
         isCompleted: it.isCompleted ?? false,
         orderIndex: it.orderIndex ?? idx,
       }));
@@ -59,9 +61,11 @@ export class UpdateWorkOrderUseCase {
       id: i.id,
       workOrderId: i.workOrderId,
       taskText: i.taskText,
+      notes: i.notes,
       isCompleted: i.isCompleted,
       orderIndex: i.orderIndex,
     }));
+
 
     const allDone = allItems.length > 0 && allItems.every((i) => i.isCompleted);
     const isDone = dto.isDone !== undefined ? dto.isDone : allDone;

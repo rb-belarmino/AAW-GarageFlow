@@ -123,18 +123,26 @@ export class InMemoryWorkOrderRepository implements IWorkOrderRepository {
     return wo;
   }
 
-  async addItem(workOrderId: string, taskText: string): Promise<WorkOrderItem> {
+  async addItem(workOrderId: string, taskText: string, notes?: string | null): Promise<WorkOrderItem> {
     const wo = this.workOrders.get(workOrderId);
     if (!wo) throw new Error("Work order not found");
     const itemId = `item-${this.itemsMap.size + 1}`;
-    const item = new WorkOrderItem({ id: itemId, workOrderId, taskText, isCompleted: false });
+    const item = new WorkOrderItem({ id: itemId, workOrderId, taskText, notes, isCompleted: false });
     this.itemsMap.set(itemId, item);
-    wo.items.push(item);
-    wo.checkOverallStatus();
+    wo.addItem(taskText, notes);
+    return item;
+  }
+
+  async updateItem(itemId: string, data: { taskText?: string; notes?: string | null }): Promise<WorkOrderItem> {
+    const item = this.itemsMap.get(itemId);
+    if (!item) throw new Error("Item not found");
+    if (data.taskText !== undefined) item.taskText = data.taskText;
+    if (data.notes !== undefined) item.notes = data.notes;
     return item;
   }
 
   async removeItem(itemId: string): Promise<void> {
+
     const item = this.itemsMap.get(itemId);
     if (item) {
       this.itemsMap.delete(itemId);

@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Plus, Search, CheckCircle2, Circle, Clock, Wrench, AlertCircle, RefreshCw, ChevronDown, Trash2, Car, Pencil, ExternalLink } from "lucide-react";
+import { Plus, Search, CheckCircle2, Circle, Clock, Wrench, AlertCircle, RefreshCw, ChevronDown, Trash2, Car, Pencil, ExternalLink, StickyNote, Check, X } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,11 +15,13 @@ export interface WorkOrderItemRecord {
   id: string;
   workOrderId: string;
   taskText: string;
+  notes?: string | null;
   isCompleted: boolean;
   completedAt?: string | null;
   completedBy?: string | null;
   orderIndex: number;
 }
+
 
 export interface WorkOrderRecord {
   id: string;
@@ -69,9 +72,12 @@ export function WorkOrderBoard() {
   });
 
   // Tasks & Notes for creation
-  const [tasksList, setTasksList] = useState<string[]>([""]);
+  const [tasksList, setTasksList] = useState<Array<{ taskText: string; notes: string }>>([
+    { taskText: "", notes: "" },
+  ]);
   const [notes, setNotes] = useState("");
   const [newItemTexts, setNewItemTexts] = useState<{ [woId: string]: string }>({});
+  const [newItemNotes, setNewItemNotes] = useState<{ [woId: string]: string }>({});
   const [error, setError] = useState<string | null>(null);
 
   // Edit Work Order Form State
@@ -81,10 +87,17 @@ export function WorkOrderBoard() {
     vehicleId: string;
     status: string;
     notes: string;
-    items: Array<{ id?: string; taskText: string; isCompleted: boolean }>;
+    items: Array<{ id?: string; taskText: string; notes?: string; isCompleted: boolean }>;
   } | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // Inline Task Note Editing on Cards
+  const [editingNoteItemId, setEditingNoteItemId] = useState<string | null>(null);
+  const [inlineNoteDraft, setInlineNoteDraft] = useState<string>("");
+  const [savingNoteItemId, setSavingNoteItemId] = useState<string | null>(null);
+
+
 
   const fetchWorkOrders = async () => {
     try {
@@ -165,19 +178,57 @@ export function WorkOrderBoard() {
     }
   };
 
+  const handleStartEditNote = (itemId: string, currentNote?: string | null) => {
+
+    setEditingNoteItemId(itemId);
+    setInlineNoteDraft(currentNote || "");
+  };
+
+  const handleSaveInlineNote = async (itemId: string) => {
+    try {
+      setSavingNoteItemId(itemId);
+      const res = await fetch(`/api/work-orders/items/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: inlineNoteDraft.trim() || null }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setEditingNoteItemId(null);
+        setInlineNoteDraft("");
+        // Optimistically update local state
+        setWorkOrders((prev) =>
+          prev.map((wo) => ({
+            ...wo,
+            items: wo.items.map((it) =>
+              it.id === itemId ? { ...it, notes: inlineNoteDraft.trim() || null } : it
+            ),
+          }))
+        );
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingNoteItemId(null);
+    }
+  };
+
   const handleAddNewItemToOrder = async (workOrderId: string) => {
+
     const taskText = newItemTexts[workOrderId]?.trim();
+    const taskNotes = newItemNotes[workOrderId]?.trim();
     if (!taskText) return;
 
     try {
       const res = await fetch(`/api/work-orders/${workOrderId}/items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskText }),
+        body: JSON.stringify({ taskText, notes: taskNotes || null }),
       });
       const json = await res.json();
       if (json.success) {
         setNewItemTexts((prev) => ({ ...prev, [workOrderId]: "" }));
+        setNewItemNotes((prev) => ({ ...prev, [workOrderId]: "" }));
         fetchWorkOrders();
       }
     } catch (e) {
@@ -185,8 +236,9 @@ export function WorkOrderBoard() {
     }
   };
 
+
   const handleAddTaskField = () => {
-    setTasksList([...tasksList, ""]);
+    setTasksList([...tasksList, { taskText: "", notes: "" }]);
   };
 
   const handleRemoveTaskField = (index: number) => {
@@ -195,16 +247,26 @@ export function WorkOrderBoard() {
 
   const handleTaskTextChange = (index: number, text: string) => {
     const next = [...tasksList];
-    next[index] = text;
+    next[index] = { ...next[index], taskText: text };
+    setTasksList(next);
+  };
+
+  const handleTaskNoteChange = (index: number, note: string) => {
+    const next = [...tasksList];
+    next[index] = { ...next[index], notes: note };
     setTasksList(next);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const validTasks = tasksList.map((t) => t.trim()).filter((t) => t.length > 0);
+    const validTasks = tasksList
+      .map((t) => ({ taskText: t.taskText.trim(), notes: t.notes?.trim() || null }))
+      .filter((t) => t.taskText.length > 0);
+
     if (validTasks.length === 0) {
       setError("Please specify at least one To Do task.");
+      return;
     }
 
     let targetVehicleId = selectedVehicleId;
@@ -259,7 +321,7 @@ export function WorkOrderBoard() {
       // Reset modal state
       setIsOpen(false);
       setVehicleMode("EXISTING_VEHICLE");
-      setTasksList([""]);
+      setTasksList([{ taskText: "", notes: "" }]);
       setNotes("");
       setNewVehicleData({
         vin: "",
@@ -288,6 +350,7 @@ export function WorkOrderBoard() {
       items: wo.items.map((i) => ({
         id: i.id,
         taskText: i.taskText,
+        notes: i.notes || "",
         isCompleted: i.isCompleted,
       })),
     });
@@ -298,6 +361,13 @@ export function WorkOrderBoard() {
     if (!editFormData) return;
     const newItems = [...editFormData.items];
     newItems[index] = { ...newItems[index], taskText: text };
+    setEditFormData({ ...editFormData, items: newItems });
+  };
+
+  const handleEditTaskNoteChange = (index: number, note: string) => {
+    if (!editFormData) return;
+    const newItems = [...editFormData.items];
+    newItems[index] = { ...newItems[index], notes: note };
     setEditFormData({ ...editFormData, items: newItems });
   };
 
@@ -312,7 +382,7 @@ export function WorkOrderBoard() {
     if (!editFormData) return;
     setEditFormData({
       ...editFormData,
-      items: [...editFormData.items, { taskText: "", isCompleted: false }],
+      items: [...editFormData.items, { taskText: "", notes: "", isCompleted: false }],
     });
   };
 
@@ -332,7 +402,11 @@ export function WorkOrderBoard() {
     setEditError(null);
 
     const validItems = editFormData.items
-      .map((item) => ({ ...item, taskText: item.taskText.trim() }))
+      .map((item) => ({
+        ...item,
+        taskText: item.taskText.trim(),
+        notes: item.notes?.trim() || null,
+      }))
       .filter((item) => item.taskText.length > 0);
 
     if (validItems.length === 0) {
@@ -341,6 +415,7 @@ export function WorkOrderBoard() {
     }
 
     setSavingEdit(true);
+
 
     try {
       const res = await fetch(`/api/work-orders/${editFormData.id}`, {
@@ -556,37 +631,50 @@ export function WorkOrderBoard() {
                     </Button>
                   </div>
 
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
                     {tasksList.map((task, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <span className="text-xs font-mono text-muted-foreground w-4">{idx + 1}.</span>
-                        <Input
-                          required
-                          placeholder={
-                            idx === 0
-                              ? "e.g. Take photos & upload to Deal Center"
-                              : idx === 1
-                              ? "e.g. Fix passenger seatbelt lock"
-                              : "e.g. Detailing wash & buy fuel cap"
-                          }
-                          value={task}
-                          onChange={(e) => handleTaskTextChange(idx, e.target.value)}
-                        />
-                        {tasksList.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:bg-destructive/10 shrink-0"
-                            onClick={() => handleRemoveTaskField(idx)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
+                      <div key={idx} className="p-2 rounded-lg border bg-muted/20 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-semibold text-muted-foreground w-4">{idx + 1}.</span>
+                          <Input
+                            required
+                            placeholder={
+                              idx === 0
+                                ? "e.g. Take photos & upload to Deal Center"
+                                : idx === 1
+                                ? "e.g. Fix passenger seatbelt lock"
+                                : "e.g. Detailing wash & buy fuel cap"
+                            }
+                            value={task.taskText}
+                            onChange={(e) => handleTaskTextChange(idx, e.target.value)}
+                            className="h-8 text-xs flex-1"
+                          />
+                          {tasksList.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:bg-destructive/10 shrink-0"
+                              onClick={() => handleRemoveTaskField(idx)}
+                              title="Remove task"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                        <div className="pl-6">
+                          <Input
+                            placeholder="Task note (optional - e.g. 'Use parts from shelf B4')..."
+                            value={task.notes}
+                            onChange={(e) => handleTaskNoteChange(idx, e.target.value)}
+                            className="h-7 text-[11px] bg-background text-muted-foreground placeholder:text-muted-foreground/60"
+                          />
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
+
 
                 <div className="space-y-1">
                   <label className="text-xs font-semibold">Internal Shop Notes (Optional)</label>
@@ -676,46 +764,57 @@ export function WorkOrderBoard() {
                   </Button>
                 </div>
 
-                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
                   {editFormData.items.map((item, idx) => (
-                    <div key={idx} className="flex items-center gap-2 p-1.5 rounded-md border bg-card/60">
-                      <button
-                        type="button"
-                        onClick={() => handleEditTaskToggle(idx)}
-                        className="p-1 text-muted-foreground hover:text-foreground shrink-0"
-                        title={item.isCompleted ? "Mark incomplete" : "Mark completed"}
-                      >
-                        {item.isCompleted ? (
-                          <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                        ) : (
-                          <Circle className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </button>
-
-                      <Input
-                        required
-                        value={item.taskText}
-                        onChange={(e) => handleEditTaskChange(idx, e.target.value)}
-                        className={`h-8 text-xs flex-1 ${item.isCompleted ? "line-through opacity-70" : ""}`}
-                        placeholder="Task description..."
-                      />
-
-                      {editFormData.items.length > 1 && (
-                        <Button
+                    <div key={idx} className="p-2 rounded-lg border bg-card/70 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <button
                           type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive hover:bg-destructive/10 shrink-0"
-                          onClick={() => handleEditRemoveTask(idx)}
-                          title="Remove this task"
+                          onClick={() => handleEditTaskToggle(idx)}
+                          className="p-1 text-muted-foreground hover:text-foreground shrink-0"
+                          title={item.isCompleted ? "Mark incomplete" : "Mark completed"}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
+                          {item.isCompleted ? (
+                            <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                          ) : (
+                            <Circle className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </button>
+
+                        <Input
+                          required
+                          value={item.taskText}
+                          onChange={(e) => handleEditTaskChange(idx, e.target.value)}
+                          className={`h-8 text-xs flex-1 ${item.isCompleted ? "line-through opacity-70" : ""}`}
+                          placeholder="Task description..."
+                        />
+
+                        {editFormData.items.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-destructive hover:bg-destructive/10 shrink-0"
+                            onClick={() => handleEditRemoveTask(idx)}
+                            title="Remove this task"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                      <div className="pl-7">
+                        <Input
+                          placeholder="Task note (optional)..."
+                          value={item.notes || ""}
+                          onChange={(e) => handleEditTaskNoteChange(idx, e.target.value)}
+                          className="h-7 text-[11px] bg-muted/30 text-muted-foreground placeholder:text-muted-foreground/60"
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
+
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold">Internal Shop Notes</label>
@@ -865,60 +964,170 @@ export function WorkOrderBoard() {
                     </div>
 
                     <div className="grid gap-2">
-                      {wo.items.map((item) => (
-                        <div
-                          key={item.id}
-                          onClick={() => handleToggleItem(wo.id, item.id, item.isCompleted)}
-                          className={`flex items-start gap-3 p-2.5 rounded-lg border transition-colors cursor-pointer ${
-                            item.isCompleted
-                              ? "bg-emerald-500/10 border-emerald-300 dark:border-emerald-800/40 text-emerald-950 dark:text-emerald-200"
-                              : "bg-card hover:bg-muted/50 border-border"
-                          }`}
-                        >
-                          <div className="mt-0.5 shrink-0">
-                            {item.isCompleted ? (
-                              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                            ) : (
-                              <Circle className="h-5 w-5 text-muted-foreground" />
-                            )}
-                          </div>
-                          <div className="flex-1 text-sm font-medium leading-tight">
-                            <span className={item.isCompleted ? "line-through opacity-70" : ""}>
-                              {item.taskText}
-                            </span>
-                            {item.completedAt && (
-                              <div className="text-[10px] text-muted-foreground mt-0.5">
-                                Completed on {formatDate(item.completedAt)}
+                      {wo.items.map((item) => {
+                        const isEditingThisNote = editingNoteItemId === item.id;
+
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => {
+                              if (!isEditingThisNote) {
+                                handleToggleItem(wo.id, item.id, item.isCompleted);
+                              }
+                            }}
+                            className={`flex flex-col p-2.5 rounded-lg border transition-colors ${
+                              isEditingThisNote
+                                ? "bg-card border-primary ring-1 ring-primary shadow-sm"
+                                : item.isCompleted
+                                ? "bg-emerald-500/10 border-emerald-300 dark:border-emerald-800/40 text-emerald-950 dark:text-emerald-200 cursor-pointer"
+                                : "bg-card hover:bg-muted/50 border-border cursor-pointer"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3 flex-1">
+                                <div className="mt-0.5 shrink-0">
+                                  {item.isCompleted ? (
+                                    <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                                  ) : (
+                                    <Circle className="h-5 w-5 text-muted-foreground" />
+                                  )}
+                                </div>
+                                <div className="flex-1 text-sm font-medium leading-tight">
+                                  <span className={item.isCompleted ? "line-through opacity-70" : ""}>
+                                    {item.taskText}
+                                  </span>
+
+                                  {/* Note Display (when not currently editing this item) */}
+                                  {!isEditingThisNote && item.notes && (
+                                    <div
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleStartEditNote(item.id, item.notes);
+                                      }}
+                                      className="mt-1.5 flex items-start gap-1.5 text-xs font-normal text-amber-900 dark:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 rounded-md px-2 py-1 border border-amber-500/20 transition-colors cursor-pointer group"
+                                      title="Click to edit task note"
+                                    >
+                                      <StickyNote className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+                                      <span className="italic flex-1">{item.notes}</span>
+                                      <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 text-muted-foreground ml-1 shrink-0 transition-opacity" />
+                                    </div>
+                                  )}
+
+                                  {item.completedAt && (
+                                    <div className="text-[10px] text-muted-foreground mt-1">
+                                      Completed on {formatDate(item.completedAt)}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Right side + Note Button (when not editing) */}
+                              {!isEditingThisNote && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 px-2 text-[11px] text-muted-foreground hover:text-primary hover:bg-primary/10 flex items-center gap-1 shrink-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleStartEditNote(item.id, item.notes || "");
+                                  }}
+                                  title={item.notes ? "Edit note" : "Add note to this task"}
+                                >
+                                  <StickyNote className="h-3 w-3" />
+                                  <span>{item.notes ? "Edit Note" : "+ Note"}</span>
+                                </Button>
+                              )}
+                            </div>
+
+                            {/* Inline Note Editor */}
+                            {isEditingThisNote && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="mt-2.5 pt-2 border-t space-y-2"
+                              >
+                                <div className="flex items-center gap-1 text-[11px] font-semibold text-primary">
+                                  <StickyNote className="h-3.5 w-3.5" />
+                                  <span>Task Note:</span>
+                                </div>
+                                <Input
+                                  autoFocus
+                                  placeholder="Type note for this task (e.g. 'Installed part #102', 'Needs alignment')..."
+                                  value={inlineNoteDraft}
+                                  onChange={(e) => setInlineNoteDraft(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      handleSaveInlineNote(item.id);
+                                    } else if (e.key === "Escape") {
+                                      setEditingNoteItemId(null);
+                                    }
+                                  }}
+                                  className="h-7 text-xs bg-muted/20"
+                                />
+                                <div className="flex items-center justify-end gap-1.5 pt-0.5">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 px-2 text-xs"
+                                    onClick={() => setEditingNoteItemId(null)}
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="h-6 px-2.5 text-xs gap-1"
+                                    disabled={savingNoteItemId === item.id}
+                                    onClick={() => handleSaveInlineNote(item.id)}
+                                  >
+                                    <Check className="h-3 w-3" />
+                                    {savingNoteItemId === item.id ? "Saving..." : "Save Note"}
+                                  </Button>
+                                </div>
                               </div>
                             )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
+
                     {/* Quick Add Task to Existing Order */}
-                    <div className="flex items-center gap-2 pt-2">
-                      <Input
-                        placeholder="Add another task to this car (e.g. 'Fix passenger mirror')..."
-                        value={newItemTexts[wo.id] || ""}
-                        onChange={(e) => setNewItemTexts({ ...newItemTexts, [wo.id]: e.target.value })}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleAddNewItemToOrder(wo.id);
-                          }
-                        }}
-                        className="h-8 text-xs"
-                      />
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="h-8 text-xs shrink-0"
-                        onClick={() => handleAddNewItemToOrder(wo.id)}
-                      >
-                        <Plus className="h-3 w-3 mr-1" /> Add Task
-                      </Button>
+                    <div className="space-y-1.5 pt-2">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder="Add another task to this car (e.g. 'Fix passenger mirror')..."
+                          value={newItemTexts[wo.id] || ""}
+                          onChange={(e) => setNewItemTexts({ ...newItemTexts, [wo.id]: e.target.value })}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddNewItemToOrder(wo.id);
+                            }
+                          }}
+                          className="h-8 text-xs flex-1"
+                        />
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="h-8 text-xs shrink-0"
+                          onClick={() => handleAddNewItemToOrder(wo.id)}
+                        >
+                          <Plus className="h-3 w-3 mr-1" /> Add Task
+                        </Button>
+                      </div>
+                      {newItemTexts[wo.id] && (
+                        <Input
+                          placeholder="Task note (optional)..."
+                          value={newItemNotes[wo.id] || ""}
+                          onChange={(e) => setNewItemNotes({ ...newItemNotes, [wo.id]: e.target.value })}
+                          className="h-7 text-[11px] bg-muted/30 text-muted-foreground placeholder:text-muted-foreground/60"
+                        />
+                      )}
                     </div>
+
 
                     {wo.notes && (
                       <div className="text-xs text-muted-foreground italic pt-1">
