@@ -34,8 +34,15 @@ export class EvaluateRecurringSchedulesUseCase {
 
       const evalResult = ScheduleEvaluator.evaluate(schedule, vehicle, currentDate);
       if (evalResult.isDue) {
-        const count = await this.workOrderRepository.count();
-        const orderNumber = `WO-${1000 + count + 1}`;
+        const totalCount = await this.workOrderRepository.count();
+        let nextNum = 1000 + totalCount + 1;
+        let candidate = `WO-${nextNum}`;
+
+        while (await this.workOrderRepository.findByOrderNumber(candidate)) {
+          nextNum++;
+          candidate = `WO-${nextNum}`;
+        }
+        const orderNumber = candidate;
 
         const autoWorkOrder = new WorkOrder({
           orderNumber,

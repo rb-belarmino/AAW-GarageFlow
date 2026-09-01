@@ -35,8 +35,16 @@ export class CreateWorkOrderUseCase {
       taskList = ["General Intake Inspection"];
     }
 
-    const count = await this.workOrderRepository.count();
-    const orderNumber = `WO-${1000 + count + 1}`;
+    // Collision-proof orderNumber calculation
+    const totalCount = await this.workOrderRepository.count();
+    let nextNum = 1000 + totalCount + 1;
+    let candidate = `WO-${nextNum}`;
+
+    while (await this.workOrderRepository.findByOrderNumber(candidate)) {
+      nextNum++;
+      candidate = `WO-${nextNum}`;
+    }
+    const orderNumber = candidate;
 
     const items = taskList.map((taskText, idx) => ({
       taskText,
@@ -53,6 +61,24 @@ export class CreateWorkOrderUseCase {
       status: "IN_PROGRESS",
     });
 
-    return await this.workOrderRepository.create(workOrder);
+    try {
+      return await this.workOrderRepository.create(workOrder);
+    } catch (err: any) {
+      // In case of rapid concurrent creations, retry with next available suffix
+      if (err?.message?.includes("orderNumber") || err?.code === "P2002") {
+        let retryNum = nextNum + 1;
+        let retryCandidate = `WO-${retryNum}`;
+        while (await this.workOrderRepository.findByOrderNumber(retryCandidate)) {
+          retryNum++;
+          retryCandidate = `WO-${retryNum}`;
+        }
+        const retryOrder = new WorkOrder({
+          ...workOrder,
+          orderNumber: retryCandidate,
+        });
+        return await this.workOrderRepository.create(retryOrder);
+      }
+      throw err;
+    }
   }
 }
