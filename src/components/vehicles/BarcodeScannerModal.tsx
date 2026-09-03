@@ -42,6 +42,16 @@ export function BarcodeScannerModal({
 
   useEffect(() => {
     setMounted(true);
+
+    // Suppress known ZXing library internal prototype mismatch warning on frame misses
+    const originalWarn = console.warn;
+    console.warn = (...args: any[]) => {
+      if (typeof args[0] === "string" && args[0].includes("MultiFormatReader: non-ReaderException")) {
+        return;
+      }
+      originalWarn(...args);
+    };
+
     // Initialize ZXing hints and reader
     const hints = new Map<DecodeHintType, any>();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [
@@ -62,6 +72,7 @@ export function BarcodeScannerModal({
 
     return () => {
       stopCamera();
+      console.warn = originalWarn;
     };
   }, []);
 
@@ -121,6 +132,13 @@ export function BarcodeScannerModal({
     if (!zxingReaderRef.current || !canvas || canvas.width === 0 || canvas.height === 0) {
       return null;
     }
+    const originalWarn = console.warn;
+    console.warn = (...args: any[]) => {
+      if (typeof args[0] === "string" && args[0].includes("MultiFormatReader")) {
+        return;
+      }
+      originalWarn(...args);
+    };
     try {
       const luminanceSource = new HTMLCanvasElementLuminanceSource(canvas);
       const binaryBitmap = new BinaryBitmap(new HybridBinarizer(luminanceSource));
@@ -130,6 +148,8 @@ export function BarcodeScannerModal({
       }
     } catch {
       // Cleanly ignore not found or format errors during normal video scanning
+    } finally {
+      console.warn = originalWarn;
     }
     return null;
   };
