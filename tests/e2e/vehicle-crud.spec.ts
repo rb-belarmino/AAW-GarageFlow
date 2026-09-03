@@ -1,12 +1,5 @@
 import { test, expect } from "@playwright/test";
-
-async function loginAsAdmin(page: any) {
-  await page.goto("/login");
-  await page.getByPlaceholder("e.g. admin or tech1").fill("admin");
-  await page.getByPlaceholder("••••••••").fill("Password123!");
-  await page.getByRole("button", { name: /Sign In/i }).click();
-  await expect(page).not.toHaveURL(/\/login/, { timeout: 15000 });
-}
+import { loginAsAdmin } from "./helpers/auth";
 
 test.describe("Vehicle Lifecycle CRUD", () => {
   test.beforeEach(async ({ page }) => {
