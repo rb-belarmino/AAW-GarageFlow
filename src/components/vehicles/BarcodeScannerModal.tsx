@@ -1,11 +1,17 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { createPortal } from "react-dom";
 import { Camera, Upload, X, AlertCircle, Loader2, Sparkles, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { BrowserMultiFormatReader, IScannerControls } from "@zxing/browser";
-import { BarcodeFormat, DecodeHintType } from "@zxing/library";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  MultiFormatReader,
+  BarcodeFormat,
+  DecodeHintType,
+  BinaryBitmap,
+  HybridBinarizer,
+  HTMLCanvasElementLuminanceSource,
+} from "@zxing/library";
 
 interface BarcodeScannerModalProps {
   isOpen: boolean;
@@ -30,14 +36,14 @@ export function BarcodeScannerModal({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scanIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const controlsRef = useRef<IScannerControls | null>(null);
-  const zxingReaderRef = useRef<BrowserMultiFormatReader | null>(null);
+  const zxingReaderRef = useRef<MultiFormatReader | null>(null);
   const isScanningRef = useRef<boolean>(false);
+  const isFrameProcessingRef = useRef<boolean>(false);
 
   useEffect(() => {
     setMounted(true);
     // Initialize ZXing hints and reader
-    const hints = new Map();
+    const hints = new Map<DecodeHintType, any>();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [
       BarcodeFormat.CODE_39,
       BarcodeFormat.CODE_128,
@@ -49,7 +55,10 @@ export function BarcodeScannerModal({
       BarcodeFormat.ITF,
     ]);
     hints.set(DecodeHintType.TRY_HARDER, true);
-    zxingReaderRef.current = new BrowserMultiFormatReader(hints);
+
+    const reader = new MultiFormatReader();
+    reader.setHints(hints);
+    zxingReaderRef.current = reader;
 
     return () => {
       stopCamera();
@@ -84,12 +93,7 @@ export function BarcodeScannerModal({
   // Stop camera stream & scanner
   const stopCamera = () => {
     isScanningRef.current = false;
-    if (controlsRef.current) {
-      try {
-        controlsRef.current.stop();
-      } catch {}
-      controlsRef.current = null;
-    }
+    isFrameProcessingRef.current = false;
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
       scanIntervalRef.current = null;
@@ -112,6 +116,24 @@ export function BarcodeScannerModal({
     onClose();
   };
 
+  // Process a single video frame or canvas snapshot
+  const scanCanvas = (canvas: HTMLCanvasElement): string | null => {
+    if (!zxingReaderRef.current || !canvas || canvas.width === 0 || canvas.height === 0) {
+      return null;
+    }
+    try {
+      const luminanceSource = new HTMLCanvasElementLuminanceSource(canvas);
+      const binaryBitmap = new BinaryBitmap(new HybridBinarizer(luminanceSource));
+      const result = zxingReaderRef.current.decode(binaryBitmap);
+      if (result) {
+        return extractValidVin(result.getText());
+      }
+    } catch {
+      // Cleanly ignore not found or format errors during normal video scanning
+    }
+    return null;
+  };
+
   // Start camera stream and scanner
   const startCamera = async () => {
     setCameraError(null);
@@ -127,7 +149,7 @@ export function BarcodeScannerModal({
       setStream(mediaStream);
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
-        await videoRef.current.play();
+        await videoRef.current.play().catch(() => {});
       }
       setStatusMessage("Align the vehicle's barcode inside the frame");
       startLiveDetection();
@@ -140,71 +162,75 @@ export function BarcodeScannerModal({
     }
   };
 
-  // Live video frame barcode detection with multi-engine support
-  const startLiveDetection = async () => {
-    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-    if (controlsRef.current) {
-      try {
-        controlsRef.current.stop();
-      } catch {}
-      controlsRef.current = null;
+  // Live video frame barcode detection
+  const startLiveDetection = () => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
     }
     isScanningRef.current = true;
+    isFrameProcessingRef.current = false;
 
-    // Engine 1: Start ZXing continuous scanner on the video element
-    if (zxingReaderRef.current && videoRef.current) {
-      try {
-        const controls = await zxingReaderRef.current.decodeFromVideoElement(
-          videoRef.current,
-          (result, error, scannerControls) => {
-            if (!isScanningRef.current) return;
-            if (result) {
-              const detected = extractValidVin(result.getText());
-              if (detected) {
-                scannerControls.stop();
-                triggerSuccess(detected);
-              }
-            }
-          }
-        );
-        controlsRef.current = controls;
-      } catch (err) {
-        console.warn("ZXing live stream attach warning:", err);
+    scanIntervalRef.current = setInterval(async () => {
+      if (!isScanningRef.current || isFrameProcessingRef.current) return;
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+
+      if (!video || !canvas || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+        return;
       }
-    }
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        return;
+      }
 
-    // Engine 2: BarcodeDetector fast loop in parallel if supported
-    if ("BarcodeDetector" in window) {
-      scanIntervalRef.current = setInterval(async () => {
-        if (!isScanningRef.current || !videoRef.current) return;
-        if (videoRef.current.readyState !== videoRef.current.HAVE_ENOUGH_DATA) return;
+      isFrameProcessingRef.current = true;
 
-        try {
-          const detector = new (window as any).BarcodeDetector({
-            formats: [
-              "code_128",
-              "code_39",
-              "data_matrix",
-              "qr_code",
-              "pdf417",
-              "upc_a",
-            ],
-          });
-          const barcodes = await detector.detect(videoRef.current);
-          if (barcodes && barcodes.length > 0) {
-            for (const b of barcodes) {
-              const detected = extractValidVin(b.rawValue);
-              if (detected) {
-                triggerSuccess(detected);
-                return;
+      try {
+        // 1. Try Native BarcodeDetector if available
+        if ("BarcodeDetector" in window) {
+          try {
+            const detector = new (window as any).BarcodeDetector({
+              formats: [
+                "code_128",
+                "code_39",
+                "data_matrix",
+                "qr_code",
+                "pdf417",
+                "upc_a",
+              ],
+            });
+            const barcodes = await detector.detect(video);
+            if (barcodes && barcodes.length > 0) {
+              for (const b of barcodes) {
+                const detected = extractValidVin(b.rawValue);
+                if (detected) {
+                  triggerSuccess(detected);
+                  return;
+                }
               }
             }
+          } catch {
+            // Fall through to ZXing
           }
-        } catch {
-          // ignore
         }
-      }, 250);
-    }
+
+        // 2. ZXing canvas decoder
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const detected = scanCanvas(canvas);
+          if (detected) {
+            triggerSuccess(detected);
+            return;
+          }
+        }
+      } catch {
+        // Ignore live stream frame errors
+      } finally {
+        isFrameProcessingRef.current = false;
+      }
+    }, 200);
   };
 
   // Photo upload detection with dual-engine fallback (iOS / Android / Desktop)
@@ -217,26 +243,7 @@ export function BarcodeScannerModal({
     setStatusMessage("Scanning barcode from image...");
 
     try {
-      const objectUrl = URL.createObjectURL(file);
-
-      // Attempt 1: ZXing Universal Decoder
-      if (zxingReaderRef.current) {
-        try {
-          const result = await zxingReaderRef.current.decodeFromImageUrl(objectUrl);
-          if (result) {
-            const detected = extractValidVin(result.getText());
-            if (detected) {
-              URL.revokeObjectURL(objectUrl);
-              triggerSuccess(detected);
-              return;
-            }
-          }
-        } catch {
-          // Fall through to native detector or canvas if ZXing image decode needs another try
-        }
-      }
-
-      // Attempt 2: Native BarcodeDetector on image bitmap
+      // Attempt 1: Native BarcodeDetector on image bitmap
       if ("BarcodeDetector" in window) {
         try {
           const bitmap = await createImageBitmap(file);
@@ -248,7 +255,6 @@ export function BarcodeScannerModal({
             for (const b of barcodes) {
               const detected = extractValidVin(b.rawValue);
               if (detected) {
-                URL.revokeObjectURL(objectUrl);
                 triggerSuccess(detected);
                 return;
               }
@@ -259,7 +265,30 @@ export function BarcodeScannerModal({
         }
       }
 
-      URL.revokeObjectURL(objectUrl);
+      // Attempt 2: ZXing canvas decoder on loaded image
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Failed to load image file"));
+        img.src = objectUrl;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext("2d");
+      if (ctx && canvas.width > 0 && canvas.height > 0) {
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(objectUrl);
+        const detected = scanCanvas(canvas);
+        if (detected) {
+          triggerSuccess(detected);
+          return;
+        }
+      } else {
+        URL.revokeObjectURL(objectUrl);
+      }
 
       throw new Error(
         "Could not detect a standard 17-digit VIN barcode or QR code in this photo. Make sure the barcode is clear and well-lit, or type the VIN manually."
@@ -295,46 +324,26 @@ export function BarcodeScannerModal({
 
   if (!isOpen || !mounted) return null;
 
-  const content = (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Scan VIN Barcode"
-      tabIndex={-1}
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in-0 duration-150 outline-none"
-      onClick={handleClose}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          handleClose();
-        }
-      }}
-    >
-      <div
-        className="relative z-[10000] w-full max-w-md rounded-2xl border border-border/80 bg-card p-5 shadow-2xl space-y-4"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+      <DialogContent
+        aria-label="Scan VIN Barcode"
+        className="w-full max-w-md rounded-2xl border border-border/80 bg-card p-5 shadow-2xl space-y-4 z-[9999]"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b pb-3">
+        <DialogHeader className="flex flex-row items-center justify-between border-b pb-3 space-y-0 text-left">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Camera className="h-4 w-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-foreground">Scan VIN Barcode</h2>
+              <DialogTitle className="text-base font-bold text-foreground">Scan VIN Barcode</DialogTitle>
               <p className="text-xs text-muted-foreground">
                 Door sticker, windshield, or vehicle barcode
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="text-muted-foreground hover:text-foreground hover:bg-muted p-1.5 rounded-lg transition-colors cursor-pointer"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        </DialogHeader>
 
         {/* Status / Alert */}
         {cameraError ? (
@@ -418,9 +427,7 @@ export function BarcodeScannerModal({
             Cancel
           </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
-
-  return createPortal(content, document.body);
 }
