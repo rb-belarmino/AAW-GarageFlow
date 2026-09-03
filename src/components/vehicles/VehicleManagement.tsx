@@ -902,13 +902,14 @@ export function VehicleManagement() {
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
                       <Car className="h-4 w-4 text-primary shrink-0" />
-                      <span
-                        className="cursor-pointer hover:underline text-primary"
+                      <button
+                        type="button"
+                        className="text-left cursor-pointer hover:underline text-primary font-medium p-0 m-0 bg-transparent border-none"
                         onClick={() => handleOpenEdit(veh)}
                         title="Click to edit vehicle"
                       >
                         {veh.year} {veh.make} {veh.model}
-                      </span>
+                      </button>
                       {veh.color && veh.color !== 'Unspecified' && (
                         <span className="text-xs text-muted-foreground">
                           ({veh.color})
@@ -917,13 +918,14 @@ export function VehicleManagement() {
                     </div>
                   </TableCell>
                   <TableCell className="font-mono text-xs">
-                    <span
-                      className="cursor-pointer hover:underline"
+                    <button
+                      type="button"
+                      className="font-mono text-xs text-left cursor-pointer hover:underline text-foreground p-0 m-0 bg-transparent border-none"
                       onClick={() => handleOpenEdit(veh)}
                       title="Click to edit vehicle"
                     >
                       {veh.vin}
-                    </span>
+                    </button>
                   </TableCell>
                   <TableCell>{formatMileage(veh.currentMileage)}</TableCell>
                   <TableCell>

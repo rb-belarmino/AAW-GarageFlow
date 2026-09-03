@@ -911,13 +911,14 @@ export function WorkOrderBoard() {
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 border-b gap-2">
                     <div>
                       <div className="flex flex-wrap items-center gap-2.5">
-                        <span
-                          className="font-mono font-bold text-sm bg-primary/10 text-primary px-2 py-0.5 rounded cursor-pointer hover:bg-primary/20 transition-colors"
+                        <button
+                          type="button"
+                          className="font-mono font-bold text-sm bg-primary/10 text-primary px-2 py-0.5 rounded cursor-pointer hover:bg-primary/20 transition-colors border-none"
                           onClick={() => handleOpenEdit(wo)}
                           title="Click to edit work order"
                         >
                           {wo.orderNumber}
-                        </span>
+                        </button>
 
                         {veh ? (
                           <Link
@@ -970,8 +971,16 @@ export function WorkOrderBoard() {
                         return (
                           <div
                             key={item.id}
+                            role="button"
+                            tabIndex={isEditingThisNote ? -1 : 0}
                             onClick={() => {
                               if (!isEditingThisNote) {
+                                handleToggleItem(wo.id, item.id, item.isCompleted);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (!isEditingThisNote && (e.key === "Enter" || e.key === " ")) {
+                                e.preventDefault();
                                 handleToggleItem(wo.id, item.id, item.isCompleted);
                               }
                             }}
@@ -999,18 +1008,19 @@ export function WorkOrderBoard() {
 
                                   {/* Note Display (when not currently editing this item) */}
                                   {!isEditingThisNote && item.notes && (
-                                    <div
+                                    <button
+                                      type="button"
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         handleStartEditNote(item.id, item.notes);
                                       }}
-                                      className="mt-1.5 flex items-start gap-1.5 text-xs font-normal text-amber-900 dark:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 rounded-md px-2 py-1 border border-amber-500/20 transition-colors cursor-pointer group"
+                                      className="mt-1.5 flex items-start gap-1.5 text-xs font-normal text-amber-900 dark:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 rounded-md px-2 py-1 border border-amber-500/20 transition-colors cursor-pointer group text-left border-none w-auto"
                                       title="Click to edit task note"
                                     >
                                       <StickyNote className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
                                       <span className="italic flex-1">{item.notes}</span>
                                       <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 text-muted-foreground ml-1 shrink-0 transition-opacity" />
-                                    </div>
+                                    </button>
                                   )}
 
                                   {item.completedAt && (
@@ -1044,6 +1054,7 @@ export function WorkOrderBoard() {
                             {isEditingThisNote && (
                               <div
                                 onClick={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => e.stopPropagation()}
                                 className="mt-2.5 pt-2 border-t space-y-2"
                               >
                                 <div className="flex items-center gap-1 text-[11px] font-semibold text-primary">

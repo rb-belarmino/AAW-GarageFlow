@@ -297,12 +297,22 @@ export function BarcodeScannerModal({
 
   const content = (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in-0 duration-150"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Scan VIN Barcode"
+      tabIndex={-1}
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in-0 duration-150 outline-none"
       onClick={handleClose}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          handleClose();
+        }
+      }}
     >
       <div
         className="relative z-[10000] w-full max-w-md rounded-2xl border border-border/80 bg-card p-5 shadow-2xl space-y-4"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b pb-3">
